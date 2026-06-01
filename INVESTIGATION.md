@@ -455,7 +455,21 @@ Every byte of WS traffic blocks the UI thread. A burst of consecutive deltas (st
 
 ---
 
-## P1-3 — URLSession leak on iOS reconnect cycles
+## P1-3 — URLSession leak on iOS reconnect cycles  ✅ FIXED
+
+**Status:** FIXED — added a stored `private let urlSession = URLSession(
+configuration: .default)` and changed `establishConnection()` to call
+`urlSession.webSocketTask(with: serverURL)` instead of creating a fresh
+session every time. Singleton lifetime ⇒ session is created once and
+reused for the life of the app.
+
+**Verification:** `xcodebuild` → `** BUILD SUCCEEDED **`. Behavioural
+parity: WebSocketTask creation, resume(), cancel(), and send/receive
+all work identically on a shared URLSession — only the session
+lifetime changed.
+
+**Original finding:**
+
 
 **Symptom (iOS):** Memory grows by ~100 KB per reconnect cycle; long-running sessions with intermittent connectivity will accumulate orphaned URLSessions.
 
