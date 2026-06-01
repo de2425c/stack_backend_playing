@@ -708,7 +708,32 @@ for persona in BOT_PERSONAS:                            # 70 personas
 
 ---
 
-## P1-9 — `synthesizeActionRequestIfNeeded` produces a UI-level action request out of sync with the server timer
+## P1-9 — `synthesizeActionRequestIfNeeded` produces a UI-level action request out of sync with the server timer  ✅ FIXED (cross-repo)
+
+**Status:** FIXED — cross-repo change spanning both backend protocol
+and iOS client:
+
+**Backend** (`src/server/app.py` REQUEST_SNAPSHOT handler): now also
+re-sends ACTION_REQUEST when it's the requester's turn. This mirrors
+the post-AUTH reconnect path so REQUEST_SNAPSHOT becomes a complete
+state recovery primitive.
+
+**iOS** (`PokerWebSocketManager.swift` foreground / reconnect paths):
+replaced `tableState.synthesizeActionRequestIfNeeded()` calls with
+`await requestSnapshotIfNeeded()` so the server is the authority for
+both the action-request payload and the deadline.
+
+**iOS** (`PokerTableState.swift`): removed the dead
+`synthesizeActionRequestIfNeeded(...)` method. Leaving it in would
+just be a footgun for future code.
+
+**Verification:** iOS Debug build → `** BUILD SUCCEEDED **`. Backend
+parses cleanly. The protocol change is backward-compatible — older
+iOS clients that ignore the extra ACTION_REQUEST will just get a
+fresh request they may have already had.
+
+**Original finding:**
+
 
 **Symptom (iOS):** After a backgrounded-then-resumed connection, iOS synthesizes an ACTION_REQUEST showing 60 s remaining. The user takes ≥ remaining server timer time, server auto-folds them, but iOS shows the action panel and accepts a button press → ACTION sent → server replies `action_timeout` ERROR → iOS shows confusing error.
 

@@ -2699,13 +2699,22 @@ async def websocket_endpoint(websocket: WebSocket):
             elif msg_type == "REQUEST_SNAPSHOT":
                 # Client detected a seq gap and wants a fresh snapshot
                 # without doing a full reconnect. Reuse manager.get_snapshot
-                # (same path used by the post-AUTH reconnect flow).
+                # (same path used by the post-AUTH reconnect flow). If it's
+                # the requester's turn, also re-send ACTION_REQUEST so the
+                # client can drop its local synthesize-and-guess path
+                # (former iOS behaviour drifted out of sync with the
+                # server timer — see INVESTIGATION.md P1-9).
                 try:
                     snapshot = await manager.get_snapshot(user_id)
                     if snapshot is not None:
                         await connections.send_to_user(
                             user_id, snapshot.model_dump(mode="json")
                         )
+                        if snapshot.hand:
+                            actor_seat = snapshot.hand.actor_seat
+                            your_seat = snapshot.your_seat
+                            if actor_seat is not None and actor_seat == your_seat:
+                                await handler._send_action_request(user_id, snapshot)
                     else:
                         await connections.send_to_user(user_id, {
                             "type": "ERROR",
