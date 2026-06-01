@@ -346,7 +346,21 @@ Each one round-trips: `tableState.objectWillChange.send()` → Combine sink → 
 
 ---
 
-## P1-1 — `Canvas` felt grain redraws ~9,700 ellipses every body invocation
+## P1-1 — `Canvas` felt grain redraws ~9,700 ellipses every body invocation  ✅ FIXED
+
+**Status:** FIXED — added `.drawingGroup()` and a stable
+`.id("felt-grain-\(Int(width))x\(Int(height))")` to the Canvas in
+`PokerTableView.swift`. `.drawingGroup()` rasterizes the closure output
+via Metal; the stable id keeps the view's SwiftUI identity unchanged as
+long as the felt size doesn't change, so the cached bitmap is reused
+across body rebuilds.
+
+**Verification:** Build succeeded. The throttle from P0-4 already
+reduces how often this is hit; together the two changes should
+eliminate the felt-grain redraw cost during gameplay.
+
+**Original finding:**
+
 
 **Symptom (iOS):** Visible CPU spikes / dropped frames whenever the table view rerenders.
 
