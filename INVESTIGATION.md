@@ -581,7 +581,25 @@ results = await asyncio.gather(*[
 
 ---
 
-## P1-6 — `_check_duel_bust` blocks the WS message loop for up to 15 s
+## P1-6 — `_check_duel_bust` blocks the WS message loop for up to 15 s  ✅ FIXED
+
+**Status:** FIXED — `_check_duel_bust` now spawns a background task
+`_finish_duel` that owns the `_wait_for_animation_complete` +
+`_complete_duel_match` chain. The original function returns True
+immediately on bust detection so the caller's broadcast loop doesn't
+stall. Timeout reduced from 15 s to 5 s per the original finding's
+recommendation.
+
+The caller (`_broadcast_events` at the duel branch) still gets the
+right True/False signal, so it correctly skips auto-starting the next
+hand. The match teardown happens out-of-band.
+
+**Verification:** Parses cleanly. The branch protocol (return True =
+duel ended, skip next-hand auto-start; return False = continue
+playing) is preserved.
+
+**Original finding:**
+
 
 **Symptom (iOS, duel mode):** After busting an opponent, the winning player's WebSocket message loop is unresponsive (no PING/PONG, no further actions) for up to 15 seconds.
 

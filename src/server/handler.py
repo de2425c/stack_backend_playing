@@ -677,10 +677,24 @@ class MessageHandler:
 
             print(f"[DUEL] Player {bust_user_id} busted, winner: {winner_user_id}", flush=True)
 
-            # Wait for client to signal animation complete (with timeout fallback)
-            await self._wait_for_animation_complete(table_id, timeout=15.0)
+            # Defer the animation-wait + match-complete to a background task.
+            # Previously this awaited up to 15 s inline; because _check_duel_bust
+            # is called from _broadcast_events which runs inside the WS message
+            # loop, the winning player's loop was blocked for the entire
+            # animation timeout — no PING, no ACTIONs accepted. The task below
+            # carries the same logic but lets the caller's loop continue.
+            #
+            # We still return True so the caller skips auto-starting the next
+            # hand; the table state will be torn down by _complete_duel_match
+            # in the background task.
+            async def _finish_duel():
+                try:
+                    await self._wait_for_animation_complete(table_id, timeout=5.0)
+                    await _complete_duel_match(table_id, winner_user_id)
+                except Exception as e:
+                    print(f"[DUEL] _finish_duel error: {e}", flush=True)
 
-            await _complete_duel_match(table_id, winner_user_id)
+            asyncio.create_task(_finish_duel())
             return True
 
         return False
