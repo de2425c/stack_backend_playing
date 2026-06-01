@@ -6,11 +6,14 @@ and forwards commands to the appropriate TableRunner.
 """
 
 import asyncio
+import logging
 from typing import Optional, TYPE_CHECKING
 
 from ..engine import TableConfig
 from ..models import PlayerIdentity, Chips, ClientAction, generate_table_id
 from .runner import TableRunner
+
+logger = logging.getLogger(__name__)
 from .commands import (
     JoinTableCommand,
     LeaveTableCommand,
@@ -128,6 +131,14 @@ class TableManager:
         Returns (table_id, seat).
         If table_id is provided, joins that specific table.
         Otherwise finds existing table with open seats or creates new one.
+
+        Financial invariant: if we debit the wallet but fail to seat the
+        player (table full, engine error, cancellation, …) we MUST refund
+        the buy-in. The try/finally below guards every failure path. The
+        refund is wrapped in `asyncio.shield` so that a cancelled outer
+        task still gets the wallet credit applied — losing the user's
+        money on a transient cancellation would be far worse than
+        delaying the cancellation by one Firestore RTT.
         """
         if user_id in self._user_tables:
             raise ValueError("User already at a table")
@@ -143,40 +154,84 @@ class TableManager:
                 f"[{stake_config.min_buy_in_cents}, {stake_config.max_buy_in_cents}]"
             )
 
-        # Check and deduct balance for non-bot players
-        if self._firestore and not user_id.startswith(("bot_", "user_bot_")):
-            balance = await self._firestore.get_user_balance(user_id)
-            if balance < buy_in.amount:
-                raise ValueError(
-                    f"INSUFFICIENT_BALANCE: {balance} cents < {buy_in.amount} cents"
-                )
-            await self._firestore.deduct_balance(user_id, buy_in.amount)
+        debited_cents = 0
+        seated = False
+        is_real_user = (
+            self._firestore is not None
+            and not user_id.startswith(("bot_", "user_bot_"))
+        )
 
-        if table_id:
-            runner = self._tables.get(table_id)
-            if runner is None:
-                raise ValueError(f"Table {table_id} not found")
-        else:
-            # Find or create table
-            runner = self._find_table_with_seats(stake_id)
-            if runner is None:
-                table_id = self.create_table(stake_id)
-                runner = self._tables[table_id]
+        try:
+            # Check and deduct balance for non-bot players
+            if is_real_user:
+                balance = await self._firestore.get_user_balance(user_id)
+                if balance < buy_in.amount:
+                    raise ValueError(
+                        f"INSUFFICIENT_BALANCE: {balance} cents < {buy_in.amount} cents"
+                    )
+                await self._firestore.deduct_balance(user_id, buy_in.amount)
+                debited_cents = buy_in.amount
 
-        # Submit join command
-        loop = asyncio.get_running_loop()
-        future: asyncio.Future = loop.create_future()
-        await runner.submit(JoinTableCommand(
-            user_id=user_id,
-            player=player,
-            buy_in=buy_in,
-            result_future=future,
-        ))
+            if table_id:
+                runner = self._tables.get(table_id)
+                if runner is None:
+                    raise ValueError(f"Table {table_id} not found")
+            else:
+                # Find or create table
+                runner = self._find_table_with_seats(stake_id)
+                if runner is None:
+                    table_id = self.create_table(stake_id)
+                    runner = self._tables[table_id]
 
-        seat, snapshot = await future
-        self._user_tables[user_id] = runner.table_id
+            # Submit join command
+            loop = asyncio.get_running_loop()
+            future: asyncio.Future = loop.create_future()
+            await runner.submit(JoinTableCommand(
+                user_id=user_id,
+                player=player,
+                buy_in=buy_in,
+                result_future=future,
+            ))
 
-        return (runner.table_id, seat)
+            seat, snapshot = await future
+            self._user_tables[user_id] = runner.table_id
+            seated = True
+
+            return (runner.table_id, seat)
+        finally:
+            if debited_cents > 0 and not seated:
+                # Refund best-effort. Shield from outer-task cancellation so
+                # the wallet credit always lands; if the Firestore call itself
+                # raises we log CRITICAL — that's a money-stuck event needing
+                # operator intervention.
+                try:
+                    await asyncio.shield(
+                        self._firestore.add_balance(user_id, debited_cents)
+                    )
+                    logger.warning(
+                        "[ADD_PLAYER] Refunded %d cents to %s after seat-acquisition failure",
+                        debited_cents, user_id,
+                    )
+                except asyncio.CancelledError:
+                    # Outer task was cancelled. asyncio.shield kept the inner
+                    # add_balance task running; the refund WILL complete.
+                    # Re-raise so the caller still sees the cancellation.
+                    logger.warning(
+                        "[ADD_PLAYER] Outer task cancelled during refund of %d cents to %s; "
+                        "shielded refund task continues in background",
+                        debited_cents, user_id,
+                    )
+                    raise
+                except Exception as refund_err:
+                    # Firestore is down or the transaction failed. Log loudly
+                    # so an operator can manually credit the wallet. The
+                    # original failure is still raised — we don't swallow it
+                    # by virtue of being in finally.
+                    logger.critical(
+                        "[ADD_PLAYER][CRITICAL] FAILED to refund %d cents to %s "
+                        "after seat-acquisition failure: %r",
+                        debited_cents, user_id, refund_err,
+                    )
 
     async def remove_player(self, user_id: str) -> Chips:
         """Remove a player from their table. Returns final chips."""

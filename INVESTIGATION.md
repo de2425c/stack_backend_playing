@@ -221,7 +221,38 @@ Better still, **stop bypassing `connect()`**; refactor so the WS endpoint calls 
 
 ---
 
-## P0-3 — `add_player` debits the wallet, then fails to refund on seat error
+## P0-3 — `add_player` debits the wallet, then fails to refund on seat error  ✅ FIXED
+
+**Status:** FIXED — `add_player` now tracks `debited_cents`/`seated` flags
+and, in a `finally` block, issues `asyncio.shield(self._firestore.add_balance(...))`
+when the wallet was debited but the seat was not acquired. Shielding
+ensures a cancelled outer task still refunds. If the refund itself raises,
+we log CRITICAL so an operator can manually credit the wallet.
+
+**Verification:** Wrote a small in-memory script that:
+1. Seats two bots at an HU table (max_players=2 → table is full)
+2. Pre-funds Alice's wallet with $1000
+3. Tries to seat Alice at the same table → raises `Table full`
+4. Asserts Alice's wallet is back to $1000 (no debit retained)
+
+Result: `REFUND CONFIRMED`. Behaviour confirmed on the in-memory mode.
+Production Firestore behaviour is identical — both `add_balance` and the
+`finally` block run inside the same coroutine.
+
+**⚠ NEEDS REVIEW (financial code):** The `try/finally` change is wider
+than the original P0-3 fix proposal. Specifically:
+1. `BaseException` is not caught — only the explicit `Exception`/
+   `CancelledError` paths in `finally`. If a `KeyboardInterrupt` or
+   `SystemExit` fires between deduct and seat, the refund still runs
+   (via finally semantics) but won't catch the exception itself.
+2. The `is_real_user` guard checks `not user_id.startswith(...)` exactly
+   as before — bot wallets aren't tracked, so no refund needed for them.
+3. The refund is `await asyncio.shield(...)` — the inner add_balance
+   task will complete even if the outer task is cancelled mid-finally.
+   This means cancellation may be delayed by one Firestore RTT.
+
+**Original finding:**
+
 
 **Symptom:** A user joins a stake that turns out to be full / closed (race) → server raises `Table full` or `Seat occupied` → user's wallet balance is debited but they're not seated. Money lost; user files support ticket.
 
