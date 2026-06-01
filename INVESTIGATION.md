@@ -665,7 +665,27 @@ Then `PreflopGrader.grade_hand` × N hands also touches Firestore via `RangeLook
 
 ---
 
-## P1-8 — `bot_personas.get_available_persona` runs 70 sequential Firestore reads
+## P1-8 — `bot_personas.get_available_persona` runs 70 sequential Firestore reads  ✅ FIXED
+
+**Status:** FIXED — added an in-memory `_rating_cache` (`persona_id ->
+rating`) and a `_stale_ratings` set:
+- `ensure_personas_exist()` now also calls `_refresh_rating_cache()`
+  which uses `FirestoreClient.get_duel_ratings(persona_ids)` (added in
+  P0-1) to read all 70 ratings in one batched gather. This warms the
+  cache at server startup.
+- `get_available_persona()` reads ratings from the cache. If any
+  personas were marked stale (post-match release), it batches their
+  refresh in one round-trip.
+- `release_persona()` marks the persona's rating stale so the next
+  assignment picks up the post-match rating without per-persona reads.
+
+**Verification:** in-memory test seeded a non-default rating (1700)
+for `bot_mike_p92`, warmed the cache, picked a persona near 1700, and
+confirmed the picked persona ends up in `_stale_ratings` after release.
+Cache filled with 68 entries on warmup.
+
+**Original finding:**
+
 
 **Symptom (server):** A duel queue timeout that fills with a bot freezes the loop for ~3.5 s while picking a persona.
 
