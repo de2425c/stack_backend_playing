@@ -20,6 +20,7 @@ from .commands import (
     PlayerActionCommand,
     StartHandCommand,
     GetSnapshotCommand,
+    GetSnapshotsBatchCommand,
     GetActionRequestCommand,
 )
 
@@ -322,6 +323,27 @@ class TableManager:
             result_future=future,
         ))
 
+        return await future
+
+    async def get_snapshots_batch(self, table_id: str, user_ids: list[str]) -> dict:
+        """Get snapshots for many users in a single runner round-trip.
+
+        Returns dict[user_id -> TableSnapshotMessage]. Users not seated at
+        the table are silently omitted from the result (race with leave).
+        Empty input yields an empty dict.
+        """
+        if not user_ids:
+            return {}
+        runner = self._tables.get(table_id)
+        if runner is None:
+            raise ValueError("Table not found")
+
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future = loop.create_future()
+        await runner.submit(GetSnapshotsBatchCommand(
+            user_ids=list(user_ids),
+            result_future=future,
+        ))
         return await future
 
     async def get_action_request(self, user_id: str):

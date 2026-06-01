@@ -438,18 +438,26 @@ class MessageHandler:
             for e in events
         )
 
-        # Get seq from first user's snapshot
-        first_user = next(iter(user_ids))
+        # Fetch every per-user snapshot in a single runner round-trip.
+        # Before the batch command this loop issued N separate snapshot
+        # commands serialised on the runner queue; on a 6-max table that
+        # was the dominant broadcast latency.
         try:
-            snapshot = await self._manager.get_snapshot(first_user)
-            seq = snapshot.seq
+            snapshots_by_user = await self._manager.get_snapshots_batch(
+                table_id, list(user_ids)
+            )
+        except Exception as e:
+            print(f"[BROADCAST] Batch snapshot failed: {e}", flush=True)
+            snapshots_by_user = {}
 
-            # Determine hand_id from snapshot if not provided
-            if hand_id is None and snapshot.hand:
-                hand_id = snapshot.hand.hand_id
-
-            actor_seat = snapshot.hand.actor_seat if snapshot.hand else None
-        except Exception:
+        # Pick a representative snapshot (any user's) for seq + actor_seat.
+        if snapshots_by_user:
+            representative = next(iter(snapshots_by_user.values()))
+            seq = representative.seq
+            if hand_id is None and representative.hand:
+                hand_id = representative.hand.hand_id
+            actor_seat = representative.hand.actor_seat if representative.hand else None
+        else:
             seq = 0
             actor_seat = None
 
@@ -481,12 +489,18 @@ class MessageHandler:
                     await self._connections.broadcast_to_table(table_id, rebuy_msg)
                     print(f"[REBUY] Sent for applied top-up: seat {seat_idx}, +{topup_amount} cents")
 
-        # Send to all users
+        # Send to all users, reusing the snapshot we already fetched in the
+        # batch above instead of issuing a fresh get_snapshot per user.
         for user_id in user_ids:
             await self._connections.send_to_user(user_id, delta_dict)
 
             try:
-                user_snapshot = await self._manager.get_snapshot(user_id)
+                user_snapshot = snapshots_by_user.get(user_id)
+                if user_snapshot is None:
+                    # User wasn't in the batch result — either they left
+                    # between get_table_users() and the batch, or the
+                    # batch failed entirely. Skip cleanly.
+                    continue
 
                 # If hand just started, send TABLE_SNAPSHOT with hole cards
                 if is_hand_start:

@@ -498,7 +498,27 @@ private func establishConnection() async throws {
 
 ---
 
-## P1-4 — `handler._broadcast_events` makes N+1 round trips through the runner queue
+## P1-4 — `handler._broadcast_events` makes N+1 round trips through the runner queue  ✅ FIXED
+
+**Status:** FIXED — added `GetSnapshotsBatchCommand` to `commands.py`,
+`_handle_snapshots_batch` to `runner.py`, and
+`TableManager.get_snapshots_batch(table_id, user_ids)` to `manager.py`.
+`handler._broadcast_events` now fetches all per-user snapshots in a
+single runner round-trip via `get_snapshots_batch` instead of looping
+`get_snapshot(user_id)` per user. At a 6-max table this is 6× fewer
+queue trips per broadcast.
+
+The actor's ACTION_REQUEST still goes through
+`_send_action_request` → `get_action_request` (one extra trip), and the
+safety-net codepath after the loop is unchanged. Both are single-user.
+
+**Verification:** parses + imports cleanly. Integration test seats two
+players and calls `get_snapshots_batch(table_id, ['bot_a','bot_b','nonexistent'])`:
+returns dict with `bot_a`/`bot_b` snapshots, `nonexistent` silently
+skipped (expected race semantics).
+
+**Original finding:**
+
 
 **Symptom (server):** Hand-start broadcast latency scales with player count; visible "everyone sees their cards at slightly different times" when the table is busy.
 
