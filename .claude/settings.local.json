@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git pull:*)",
+      "Bash(for:*)",
+      "Bash(do echo '=== $f ===' ssh de2425@162.222.177.28 'cat ~/poker_backend/$f')"
+    ]
+  }
+}

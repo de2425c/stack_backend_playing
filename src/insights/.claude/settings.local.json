@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(source:*)",
+      "Bash(python scripts/test_opus_insights.py:*)",
+      "Bash(GOOGLE_APPLICATION_CREDENTIALS=/Users/davideyal/Projects/stack_poker/backend/stack-24dea-firebase-adminsdk-fbsvc-928dfa73a0.json python3:*)",
+      "Bash(python:*)",
+      "Bash(export PINECONE_API_KEY ANTHROPIC_API_KEY)",
+      "Bash(pdfinfo:*)",
+      "Bash(mdls:*)",
+      "Bash(pdftotext:*)",
+      "Bash(brew list:*)",
+      "Bash(echo:*)",
+      "Bash(kill:*)",
+      "Bash(set:*)",
+      "WebFetch(domain:pypi.org)",
+      "Bash(GOOGLE_APPLICATION_CREDENTIALS=\"/Users/davideyal/Downloads/stack-24dea-firebase-adminsdk-fbsvc-928dfa73a0.json\" python -m pytest:*)",
+      "Bash(GOOGLE_APPLICATION_CREDENTIALS=\"/Users/davideyal/Projects/stack_poker/backend/stack-24dea-firebase-adminsdk-fbsvc-928dfa73a0.json\" python:*)",
+      "Bash(for i in {1..5})",
+      "Bash(do curl -s \"http://162.222.177.28:8000/debug/session_insights?min_hands=15\")",
+      "Bash(done)",
+      "Bash(for:*)",
+      "Bash(do echo \"=== Session $i ===\" curl -s \"http://162.222.177.28:8000/debug/session_info?min_hands=15\")",
+      "Bash(do curl -s \"http://162.222.177.28:8000/debug/session_info?min_hands=15\")",
+      "Bash(xcodebuild:*)"
+    ]
+  }
+}

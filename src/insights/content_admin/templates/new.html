@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add New Content - Poker Content</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .back-link {
+            color: #2563eb;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        .back-link:hover { text-decoration: underline; }
+        h1 { color: #333; margin: 10px 0 20px; }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .field {
+            margin-bottom: 20px;
+        }
+        .field label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: #374151;
+        }
+        .field input[type="text"],
+        .field textarea,
+        .field select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+        .field input[type="text"]:focus,
+        .field textarea:focus,
+        .field select:focus {
+            outline: none;
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+        .field textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        .field-row {
+            display: flex;
+            gap: 20px;
+        }
+        .field-row .field { flex: 1; }
+        .hint {
+            font-size: 12px;
+            color: #6b7280;
+            margin-top: 4px;
+        }
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #2563eb;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 500;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn:hover { background: #1d4ed8; }
+        .btn-secondary {
+            background: #6b7280;
+        }
+        .btn-secondary:hover { background: #4b5563; }
+        .actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+    </style>
+    <script>
+        function generateId() {
+            const name = document.getElementById('name').value;
+            const id = name.toLowerCase()
+                .replace(/[^a-z0-9\s-]/g, '')
+                .replace(/\s+/g, '-')
+                .replace(/-+/g, '-')
+                .trim();
+            document.getElementById('id').value = id;
+        }
+    </script>
+</head>
+<body>
+    <a href="/" class="back-link">&larr; Back to all content</a>
+    <h1>Add New Content</h1>
+
+    <div class="card">
+        <form method="post" action="/content/new">
+            <div class="field">
+                <label for="name">Name</label>
+                <input type="text" id="name" name="name" required onblur="generateId()">
+                <div class="hint">Display name shown to users (e.g., "Range Advantage")</div>
+            </div>
+
+            <div class="field">
+                <label for="id">ID</label>
+                <input type="text" id="id" name="id" required pattern="[a-z0-9-]+">
+                <div class="hint">URL-safe identifier, auto-generated from name (e.g., "range-advantage")</div>
+            </div>
+
+            <div class="field-row">
+                <div class="field">
+                    <label for="type">Type</label>
+                    <select id="type" name="type" required>
+                        <option value="term">Term</option>
+                        <option value="concept">Concept</option>
+                    </select>
+                    <div class="hint">Terms are vocabulary, concepts are strategic ideas</div>
+                </div>
+                <div class="field">
+                    <label for="category">Category</label>
+                    <select id="category" name="category" required>
+                        <option value="preflop">Preflop</option>
+                        <option value="postflop">Postflop</option>
+                        <option value="3-bet-pots">3-Bet Pots</option>
+                        <option value="position">Position</option>
+                        <option value="bet-sizing">Bet Sizing</option>
+                        <option value="board-texture">Board Texture</option>
+                        <option value="ranges">Ranges</option>
+                        <option value="core-concepts">Core Concepts</option>
+                    </select>
+                    <div class="hint">Game situation or topic area</div>
+                </div>
+            </div>
+
+            <div class="field">
+                <label for="blurb">Blurb (Optional)</label>
+                <textarea id="blurb" name="blurb" placeholder="2-sentence explanation shown in modal..."></textarea>
+                <div class="hint">Can be added later. Keep it to 2 sentences.</div>
+            </div>
+
+            <div class="field">
+                <label for="body">Body (Optional)</label>
+                <textarea id="body" name="body" style="min-height: 150px;" placeholder="Longer explanation..."></textarea>
+                <div class="hint">Optional longer content.</div>
+            </div>
+
+            <div class="actions">
+                <button type="submit" class="btn">Create Content</button>
+                <a href="/" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</body>
+</html>

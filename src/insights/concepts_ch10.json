@@ -1,0 +1,399 @@
+[
+  {
+    "id": "polar_3bet_strategy",
+    "name": "Polar 3-Betting Range Construction",
+    "explanation": "A 3-betting range with two distinct groups: strong hands for value (green) and weak hands with blockers/playability for bluffs (red), with medium-strength hands used for calling (blue). The bluffs and value hands are separated by the calling range in the middle.",
+    "when_applies": [
+      "sufficient_fold_equity_available",
+      "having_flatting_range",
+      "villain_folds_50_percent_plus_to_3bets"
+    ],
+    "hand_types": [
+      "premium_pairs",
+      "suited_aces",
+      "suited_connectors",
+      "blocker_hands",
+      "top_broadway"
+    ],
+    "key_insight": "You need both fold equity and a calling range to make polar 3-betting work - without either condition, go linear instead.",
+    "source_quote": "There are two necessary conditions to be met before a polar 3-bet range should be adopted.",
+    "source_chapter": "3-Betting"
+  },
+  {
+    "id": "3bet_value_definition",
+    "name": "3-Betting for Value Criteria",
+    "explanation": "A hand can only be 3-bet for value if it's ahead of the range villain continues with against the 3-bet, not just ahead of his opening range. Value is determined by what villain calls/4-bets with, not what he originally opened.",
+    "when_applies": [
+      "considering_3bet_with_strong_hands",
+      "evaluating_hand_strength",
+      "facing_tight_opener"
+    ],
+    "hand_types": [
+      "premium_pairs",
+      "AK",
+      "strong_broadway",
+      "top_suited_aces"
+    ],
+    "key_insight": "Value isn't about being ahead of the opening range - it's about being ahead of the continuing range.",
+    "source_quote": "If a hand is not ahead of the range that Villain is likely to continue with, then it cannot be 3-bet for value, irrespective of how it fares vs. Villain's opening range.",
+    "source_chapter": "3-Betting"
+  },
+  {
+    "id": "3bet_bluff_selection",
+    "name": "Optimal 3-Bet Bluff Hand Selection",
+    "explanation": "3-bet bluffs should come from hands too weak to call but with blockers (A/K cards) and/or playability (suited, connected). These hands provide fold equity pre-flop while having some post-flop potential when called.",
+    "when_applies": [
+      "polar_3betting_strategy",
+      "sufficient_fold_equity",
+      "need_bluff_combos"
+    ],
+    "hand_types": [
+      "suited_aces",
+      "suited_connectors",
+      "double_blocker_offsuit",
+      "suited_gappers"
+    ],
+    "key_insight": "Use your best folding hands as 3-bet bluffs - hands with blockers and playability that you'd otherwise fold.",
+    "source_quote": "Hero uses hands that, whilst not super strong, can hold their own by having one or both of the following two perks: Blockers... Playability",
+    "source_chapter": "3-Betting"
+  },
+  {
+    "id": "fold_equity_threshold",
+    "name": "Minimum Fold Equity for 3-Bet Bluffs",
+    "explanation": "You need approximately 50% fold equity to profitably 3-bet bluff with playable hands. This is lower than the theoretical RFE of ~64% because bluff hands have post-flop playability and can win when called.",
+    "when_applies": [
+      "evaluating_3bet_bluff_profitability",
+      "facing_calling_station",
+      "assessing_villain_fold_frequency"
+    ],
+    "hand_types": [
+      "suited_aces",
+      "suited_connectors",
+      "blocker_hands"
+    ],
+    "key_insight": "You need about 50% fold equity to make 3-bet bluffing profitable with decent hands that play well post-flop.",
+    "source_quote": "We'll reduce the RFE target from 64% for this spot to 50% to account for these factors.",
+    "source_chapter": "3-Betting"
+  },
+  {
+    "id": "balanced_bluff_value_ratio",
+    "name": "Balanced 3-Bet Bluff-to-Value Ratio",
+    "explanation": "A balanced 3-bet strategy uses approximately 1.25 bluff combos for every value combo to make villain indifferent to 4-bet bluffing. This ratio is calculated based on villain's required fold equity when 4-betting as a bluff.",
+    "when_applies": [
+      "building_balanced_ranges",
+      "facing_competent_regulars",
+      "avoiding_exploitation"
+    ],
+    "hand_types": [
+      "value_3bet_hands",
+      "bluff_3bet_hands"
+    ],
+    "key_insight": "Balance requires about 1.25 bluff combos per value combo - not the 1:1 ratio many players assume.",
+    "source_quote": "Hero would need 56/45 = 1.27 combos of bluffs for every value hand in order to be balanced.",
+    "source_chapter": "3-Betting"
+  },
+  {
+    "id": "overadjustment_danger",
+    "name": "Avoiding Over-Adjustment in 3-Bet Wars",
+    "explanation": "When exploiting opponents who fold too much to 3-bets, avoid massive over-bluffing that creates obvious counter-exploitation opportunities. Make subtle adjustments that extract value without opening huge leaks in your own strategy.",
+    "when_applies": [
+      "exploiting_weak_players",
+      "adjustment_wars_with_regs",
+      "long_term_strategy_planning"
+    ],
+    "hand_types": [
+      "exploitative_bluff_range",
+      "value_betting_range"
+    ],
+    "key_insight": "Exploit opponents subtly - massive over-adjustments create bigger leaks in your game than theirs.",
+    "source_quote": "The lesson here is that it is correct to exploit imbalances in an opponent's game, but it's prudent to do so in a way that doesn't offer up such massive and obvious counter adjustments.",
+    "source_chapter": "3-Betting"
+  },
+  {
+    "id": "calling_range_requirement",
+    "name": "Calling Range Necessity for Polar Strategy",
+    "explanation": "Polar 3-betting only works when you have hands worth calling with. Without a calling range, you can't have the gap between value and bluffs that defines polarity - you'd need to use a linear strategy instead.",
+    "when_applies": [
+      "choosing_polar_vs_linear",
+      "short_stack_play",
+      "blind_vs_blind_battles"
+    ],
+    "hand_types": [
+      "medium_pairs",
+      "suited_connectors",
+      "implied_odds_hands"
+    ],
+    "key_insight": "No calling range means no polar strategy - you need that middle group of hands to create the polar structure.",
+    "source_quote": "Having a calling range vs. the open is essential for adopting a polar strategy.",
+    "source_chapter": "3-Betting"
+  },
+  {
+    "id": "exploitative_bluff_value_ratio",
+    "name": "Exploitative Bluff to Value Ratio",
+    "explanation": "Adjusting your ratio of bluff 3-bets to value 3-bets based on opponent tendencies. Against most regs, a 1.77:1 ratio is reasonable, but extreme ratios like 3:1 or 4:1 will get exploited long-term.",
+    "when_applies": [
+      "3betting_vs_regs",
+      "polar_strategy",
+      "facing_aware_opponents"
+    ],
+    "hand_types": [
+      "bluff_3bet_range",
+      "value_3bet_range"
+    ],
+    "key_insight": "Most players will adjust to extreme bluff-heavy ratios by flatting and 4-betting more, so stay reasonable unless opponent is extremely passive.",
+    "source_quote": "I've seen players argue for bluffing ranges that are 3 or 4 times the size of the value range in this spot and I think it's a categorical long-term mistake vs. most Regs.",
+    "source_chapter": "3-Betting"
+  },
+  {
+    "id": "linear_3bet_strategy",
+    "name": "Linear 3-Bet Strategy Application",
+    "explanation": "Using a linear 3-bet range when you have limited fold equity or don't want a calling range. You 3-bet only your strongest hands in order, without gaps for bluffs.",
+    "when_applies": [
+      "limited_fold_equity",
+      "small_blind_position",
+      "known_squeezers_behind",
+      "facing_fish"
+    ],
+    "hand_types": [
+      "premium_hands",
+      "strong_broadway",
+      "big_pocket_pairs"
+    ],
+    "key_insight": "Use linear when fold equity is poor or you can't have a calling range - 3-bet only hands strong enough to handle getting called.",
+    "source_quote": "Hero should use a linear 3-bet strategy when: He has limited fold equity... He does not usually want to flat due to being in the SB",
+    "source_chapter": "3-Betting"
+  },
+  {
+    "id": "fish_isolation_linear",
+    "name": "Linear Range for Fish Isolation",
+    "explanation": "Against aggressive fish who don't fold much, use a linear 3-bet range focused on hands with frequent strength. Expand range if fish plays fit-or-fold postflop.",
+    "when_applies": [
+      "facing_aggro_fish",
+      "isolating_fish",
+      "lack_postflop_fold_equity"
+    ],
+    "hand_types": [
+      "frequent_strength_hands",
+      "big_aces",
+      "broadway_cards",
+      "medium_pairs"
+    ],
+    "key_insight": "The crazier the fish plays postflop, the more you need hands that connect with flops frequently rather than just fold equity.",
+    "source_quote": "The crazier the Fish plays post-flop, the more need there is for Hero to connect with flops more often.",
+    "source_chapter": "3-Betting"
+  },
+  {
+    "id": "squeeze_bluff_types",
+    "name": "Three Types of Squeeze Bluffs",
+    "explanation": "Bluff-bluff (fold equity vs both), value-bluff (value vs fish, bluff vs reg), and value-value (ahead when called by either). Choose based on opponent types in the pot.",
+    "when_applies": [
+      "squeeze_spots",
+      "multiway_pots",
+      "mixed_opponent_types"
+    ],
+    "hand_types": [
+      "medium_aces",
+      "broadway_combos",
+      "suited_connectors",
+      "premium_hands"
+    ],
+    "key_insight": "Identify which opponents you're targeting for fold equity versus value when multiple players are in the pot.",
+    "source_quote": "A value-bluff squeeze is for value against a more stationy player (usually a Fish) and as a bluff against a more solid player",
+    "source_chapter": "3-Betting"
+  },
+  {
+    "id": "multiway_hand_values",
+    "name": "Multiway Hand Value Changes",
+    "explanation": "In squeeze spots, hands with nut potential increase in value for calling, while big offsuit hands decrease in value and become better bluff candidates.",
+    "when_applies": [
+      "squeeze_spots",
+      "multiway_pots",
+      "multiple_callers"
+    ],
+    "hand_types": [
+      "suited_connectors",
+      "pocket_pairs",
+      "offsuit_broadway",
+      "speculative_hands"
+    ],
+    "key_insight": "Hands that flop big rarely prefer cheap multiway pots, while one-pair hands prefer isolation.",
+    "source_quote": "Big offsuit hands tend to depreciate in value since they prefer to be heads up in order to have good relative hand strength",
+    "source_chapter": "3-Betting"
+  },
+  {
+    "id": "polar_vs_linear_decision",
+    "name": "Polar vs Linear Strategy Decision",
+    "explanation": "Always ask whether to use polar or linear 3-bet strategy first. Polar requires fold equity and a calling range, linear is for limited fold equity or no calling range situations.",
+    "when_applies": [
+      "all_3bet_spots",
+      "strategic_planning",
+      "range_construction"
+    ],
+    "hand_types": [
+      "entire_playing_range"
+    ],
+    "key_insight": "Never forget to ask the polar versus linear question - this fundamental choice drives your entire strategy.",
+    "source_quote": "Never forget to ask the polar/linear question regardless of whether you're battling in game, or training out of game",
+    "source_chapter": "3-Betting"
+  },
+  {
+    "id": "balanced_squeeze_sizing",
+    "name": "Balanced 3-Bet Sizing Strategy",
+    "explanation": "Use the same 3-bet size with all parts of your range against competent opponents. Find the optimal balance between required fold equity and actual fold equity.",
+    "when_applies": [
+      "3betting_vs_regs",
+      "squeeze_spots",
+      "balanced_play"
+    ],
+    "hand_types": [
+      "value_3bets",
+      "bluff_3bets"
+    ],
+    "key_insight": "Balance sizing across your entire range - if you size for optimal bluff equity, use that same size with your value hands.",
+    "source_quote": "Whether Hero is value raising or bluffing with his 3-bet, the sizing should not change against anyone competent",
+    "source_chapter": "3-Betting"
+  },
+  {
+    "id": "tight_fish_linear_only",
+    "name": "Linear Only vs Tight Fish",
+    "explanation": "Against very tight fish with small opening ranges, use an extremely tight linear 3-bet range. Bluffing is pointless when fold equity is non-existent and you face strong ranges.",
+    "when_applies": [
+      "facing_tight_fish",
+      "utg_opens",
+      "strong_villain_ranges"
+    ],
+    "hand_types": [
+      "premium_pairs",
+      "strongest_aces"
+    ],
+    "key_insight": "When facing very tight ranges with no fold equity, even strong hands like JJ should often just call to control pot size.",
+    "source_quote": "There is a serious problem with squeezing anything but a very tight linear range here. Fold equity is non-existent",
+    "source_chapter": "3-Betting"
+  },
+  {
+    "id": "three_bet_sizing_vs_fish",
+    "name": "3-Bet Sizing Against Fish for Value",
+    "explanation": "Against recreational players, use larger 3-bet sizes (around 4x) even in position to maximize value and set up profitable c-bets. Fish often play fit-or-fold post-flop, so creating bigger pots increases the profitability of both value betting and bluffing.",
+    "when_applies": [
+      "facing_fish_opens",
+      "isolating_recreational_players",
+      "value_3betting_vs_loose_passives"
+    ],
+    "hand_types": [
+      "premium_pairs",
+      "suited_aces",
+      "broadway_hands",
+      "strong_value_range"
+    ],
+    "key_insight": "Against fit-or-fold players, bigger pots make both value bets and bluffs more profitable post-flop.",
+    "source_quote": "Against Fish, we're usually exclusively 3-betting for value or else to set up very profitable c-bets with post-flop fold equity gained from isolation.",
+    "source_chapter": "3-Betting"
+  },
+  {
+    "id": "implied_odds_in_three_bet_sizing",
+    "name": "Balancing Implied Odds in 3-Bet Sizing",
+    "explanation": "3-bet sizing must balance between preventing opponents from profitably calling with speculative hands while not making the size so large that strong hands get excellent implied odds. Avoid sizes that let hands like 55 and 76s mine profitably.",
+    "when_applies": [
+      "sizing_three_bets",
+      "preventing_set_mining",
+      "balancing_fold_equity"
+    ],
+    "hand_types": [
+      "small_pocket_pairs",
+      "suited_connectors",
+      "speculative_hands"
+    ],
+    "key_insight": "Don't make 3-bets so small that opponents can profitably mine with weak hands, but don't go so big that strong hands get great implied odds.",
+    "source_quote": "We must be careful as the 3-bettor not to make 3-bets so small that our value range will be successfully mined by the likes of 55 and 76s where this is avoidable.",
+    "source_chapter": "3-Betting"
+  },
+  {
+    "id": "position_based_three_bet_sizing",
+    "name": "Positional 3-Bet Sizing Adjustments",
+    "explanation": "Use smaller 3-bet sizes in position since opponents must play out of position and will fold more. Out of position, use larger sizes to compensate for the positional disadvantage and maintain necessary fold equity for bluffs.",
+    "when_applies": [
+      "three_betting_in_position",
+      "three_betting_out_of_position",
+      "positional_sizing_adjustments"
+    ],
+    "hand_types": [
+      "three_bet_bluffs",
+      "linear_three_bet_range",
+      "merged_ranges"
+    ],
+    "key_insight": "Position allows you to use smaller sizes because opponents struggle more playing out of position post-flop.",
+    "source_quote": "In position Villain has an easier time making +EV calls vs. our 3-bets. Out of position he'll have to fold more of his range.",
+    "source_chapter": "3-Betting"
+  },
+  {
+    "id": "open_size_vs_three_bet_sizing",
+    "name": "3-Bet Sizing Based on Original Open",
+    "explanation": "Use larger 3-bet sizes against smaller opens and smaller 3-bet sizes against larger opens. This is because larger opens naturally reduce stack-to-pot ratios and cut implied odds, requiring less sizing adjustment from the 3-bettor.",
+    "when_applies": [
+      "facing_minraises",
+      "facing_large_opens",
+      "adjusting_to_open_sizes"
+    ],
+    "hand_types": [
+      "three_bet_value_range",
+      "three_bet_bluff_range",
+      "balanced_three_bet_range"
+    ],
+    "key_insight": "Go bigger against smaller opens to cut implied odds, but you can size down against larger opens since implied odds are already reduced.",
+    "source_quote": "the bigger Villain opens, the smaller the stack to pot ratio and so Villain's implied odds to call a 3-bet are already naturally cut",
+    "source_chapter": "3-Betting"
+  },
+  {
+    "id": "short_stack_three_bet_sizing",
+    "name": "3-Bet Sizing with Shallow Stacks",
+    "explanation": "With shorter effective stacks, reduce 3-bet sizing since implied odds are already severely cut by stack depth. Avoid sizing too large as it gives opponents great reverse implied odds on potential 4-bet shoves.",
+    "when_applies": [
+      "short_stack_play",
+      "40bb_effective_stacks",
+      "shallow_three_bet_pots"
+    ],
+    "hand_types": [
+      "short_stack_value_range",
+      "reduced_speculative_hands"
+    ],
+    "key_insight": "Smaller stacks naturally hurt implied odds, so you can size down your 3-bets while still preventing profitable calls.",
+    "source_quote": "Smaller effective stacks hurt implied odds substantially.",
+    "source_chapter": "3-Betting"
+  },
+  {
+    "id": "flatting_three_bets_profitability",
+    "name": "Profitable 3-Bet Flatting Strategy",
+    "explanation": "Flatting 3-bets can be extremely profitable, especially in position against light 3-bettors. You don't need to show overall profit on the hand, just beat the -3BB you'd lose by folding, even if you end up losing money overall.",
+    "when_applies": [
+      "facing_three_bets_in_position",
+      "against_light_three_bettors",
+      "defending_opening_range"
+    ],
+    "hand_types": [
+      "marginal_opening_hands",
+      "speculative_hands",
+      "suited_connectors",
+      "small_pairs"
+    ],
+    "key_insight": "When flatting 3-bets, you just need to lose less than the chips you'd forfeit by folding, not show an overall profit.",
+    "source_quote": "it does not need to show up green on your tracking software, but merely less red than folding would be",
+    "source_chapter": "3-Betting"
+  },
+  {
+    "id": "modern_three_bet_defense",
+    "name": "Modern 3-Bet Defense Requirements",
+    "explanation": "Modern poker requires defending enough hands against 3-bets and then defending appropriately to c-bets post-flop. Simply folding too much to 3-bets or playing fit-or-fold post-flop is no longer viable against competent opponents.",
+    "when_applies": [
+      "facing_frequent_three_bets",
+      "playing_higher_stakes",
+      "against_aggressive_opponents"
+    ],
+    "hand_types": [
+      "defending_range",
+      "continuing_range_postflop"
+    ],
+    "key_insight": "You must defend enough against 3-bets AND continue enough post-flop - both parts are essential for profitable defense.",
+    "source_quote": "flatting 3-bets, especially against very light 3-bettors in position is actually extremely profitable, as long as the caller ensures to defend enough of his range to c-bets post-flop",
+    "source_chapter": "3-Betting"
+  }
+]

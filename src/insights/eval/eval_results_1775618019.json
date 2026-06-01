@@ -1,0 +1,73 @@
+{
+  "comparisons": [
+    {
+      "scenario_id": "flop_cbet_dry",
+      "description": "Standard c-bet on dry flop as preflop raiser IP",
+      "expected_concepts": [
+        "range advantage",
+        "dry board",
+        "c-bet",
+        "position"
+      ],
+      "option_a": {
+        "source": "single_pass",
+        "insight": "The {{c-bet}} on this dry {{rainbow}} board with {{overcards}} is correct because you have excellent {{fold-equity}} against BB's wide defending range, and when called, you retain strong equity with two live overcards and potential runner-runner outs."
+      },
+      "option_b": {
+        "source": "two_pass",
+        "insight": "On this dry Q-7-2 board, your AK has significant range advantage because BTN's opening range contains far more Qx combinations and overpairs than BB's calling range, which mostly missed with suited connectors and small pairs. The fold equity from this range imbalance makes c-betting profitable even when you completely miss the flop."
+      },
+      "single_pass_time": 3.527255058288574,
+      "two_pass_time": 37.77434277534485,
+      "winner": null
+    },
+    {
+      "scenario_id": "river_bluff_catch",
+      "description": "River bluff-catching with top pair good kicker",
+      "expected_concepts": [
+        "bluff catching",
+        "pot odds",
+        "range reading",
+        "board texture"
+      ],
+      "option_a": {
+        "source": "single_pass",
+        "insight": "Your turn check was the key mistake - with {{top-pair}} on a safe board, you should continue {{betting-for-value}} against BB's wide calling range from the flop. When you check back, you allow weaker hands to realize their {{equity}} for free and invite bluffs on the river that put you in tough spots."
+      },
+      "option_b": {
+        "source": "two_pass",
+        "insight": "Your turn pot control with AQ set up a perfect river bluff-catching spot\u2014when you check back for pot control, you signal medium strength and become an attractive target for villain's polarized river lead, making TPTK a premium call against their value/bluff mix."
+      },
+      "single_pass_time": 3.808739185333252,
+      "two_pass_time": 43.84342098236084,
+      "winner": null
+    },
+    {
+      "scenario_id": "preflop_squeeze",
+      "description": "Squeeze play from blinds",
+      "expected_concepts": [
+        "squeeze",
+        "fold equity",
+        "dead money",
+        "3-bet"
+      ],
+      "option_a": {
+        "source": "single_pass",
+        "insight": "Your {{3bet}} with AJs from the BB is profitable here because you have strong {{equity}} against both opponents' ranges, and the {{dead-money}} from the SB fold plus your {{positional}} disadvantage being offset by range advantage makes this a clear value spot against two loose calls."
+      },
+      "option_b": {
+        "source": "two_pass",
+        "insight": "In multiway pots where opponents have overlapping medium-strength ranges, your polarized 3-bet with AJ generates maximum fold equity because both the CO and BTN must continue with only the top portion of their ranges, making most of their combined holdings unprofitable to defend."
+      },
+      "single_pass_time": 3.626765727996826,
+      "two_pass_time": 39.50322985649109,
+      "winner": null
+    }
+  ],
+  "metrics": {
+    "single_pass_avg_time": 3.6542533238728843,
+    "two_pass_avg_time": 40.37366453806559,
+    "single_pass_avg_length": 279.3333333333333,
+    "two_pass_avg_length": 292.0
+  }
+}

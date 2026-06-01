@@ -1,0 +1,231 @@
+{
+  "description": "10 hand scenarios for evaluating two-pass reasoning quality",
+  "version": "1.0",
+  "scenarios": [
+    {
+      "id": "flop_cbet_dry",
+      "description": "Standard c-bet on dry flop as preflop raiser IP",
+      "hand": {
+        "hero_position": "BTN",
+        "hero_hand": "AsKs",
+        "num_players": 2,
+        "pot_type": "single raised",
+        "board": "Qc 7d 2h",
+        "street_actions": [
+          {"street": "preflop", "cards": "", "actions": "BTN raises to 2.5bb, BB calls"},
+          {"street": "flop", "cards": "Qc 7d 2h", "actions": "BB checks, Hero bets 3bb, BB folds"}
+        ],
+        "hero_decisions": [
+          {"street": "flop", "action_taken": "bets 3bb", "pot_before_bb": 5.5, "facing": "check", "position_vs_villain": "in position"}
+        ],
+        "hero_won": true,
+        "profit_bb": 5.5
+      },
+      "expected_concepts": ["range advantage", "dry board", "c-bet", "position"]
+    },
+    {
+      "id": "3bet_pot_oop_turn",
+      "description": "3-bet pot OOP with underpair facing turn decision",
+      "hand": {
+        "hero_position": "BB",
+        "hero_hand": "JsJc",
+        "num_players": 2,
+        "pot_type": "3-bet",
+        "board": "Kd 8c 4s 2h",
+        "street_actions": [
+          {"street": "preflop", "cards": "", "actions": "BTN raises to 2.5bb, BB 3-bets to 9bb, BTN calls"},
+          {"street": "flop", "cards": "Kd 8c 4s", "actions": "BB bets 6bb, BTN calls"},
+          {"street": "turn", "cards": "2h", "actions": "BB checks, BTN bets 15bb, BB folds"}
+        ],
+        "hero_decisions": [
+          {"street": "flop", "action_taken": "bets 6bb", "pot_before_bb": 18, "facing": "first to act", "position_vs_villain": "out of position"},
+          {"street": "turn", "action_taken": "checks then folds", "pot_before_bb": 30, "facing": "15bb bet", "position_vs_villain": "out of position"}
+        ],
+        "hero_won": false,
+        "profit_bb": -15
+      },
+      "expected_concepts": ["underpair", "range disadvantage", "OOP", "pot control"]
+    },
+    {
+      "id": "river_bluff_catch",
+      "description": "River bluff-catching with top pair good kicker",
+      "hand": {
+        "hero_position": "CO",
+        "hero_hand": "AhQc",
+        "num_players": 2,
+        "pot_type": "single raised",
+        "board": "Qs 9c 4d 7h 2s",
+        "street_actions": [
+          {"street": "preflop", "cards": "", "actions": "CO raises to 2.5bb, BB calls"},
+          {"street": "flop", "cards": "Qs 9c 4d", "actions": "BB checks, CO bets 2bb, BB calls"},
+          {"street": "turn", "cards": "7h", "actions": "BB checks, CO checks"},
+          {"street": "river", "cards": "2s", "actions": "BB bets 8bb, CO calls"}
+        ],
+        "hero_decisions": [
+          {"street": "flop", "action_taken": "bets 2bb", "pot_before_bb": 5.5, "facing": "check", "position_vs_villain": "in position"},
+          {"street": "turn", "action_taken": "checks", "pot_before_bb": 9.5, "facing": "check", "position_vs_villain": "in position"},
+          {"street": "river", "action_taken": "calls", "pot_before_bb": 9.5, "facing": "8bb bet", "position_vs_villain": "in position"}
+        ],
+        "hero_won": true,
+        "profit_bb": 17.5
+      },
+      "expected_concepts": ["bluff catching", "pot odds", "range reading", "board texture"]
+    },
+    {
+      "id": "wet_board_check_raise",
+      "description": "Facing check-raise on wet flop with overpair",
+      "hand": {
+        "hero_position": "MP",
+        "hero_hand": "KsKc",
+        "num_players": 2,
+        "pot_type": "single raised",
+        "board": "Jc Tc 6h",
+        "street_actions": [
+          {"street": "preflop", "cards": "", "actions": "MP raises to 3bb, BB calls"},
+          {"street": "flop", "cards": "Jc Tc 6h", "actions": "BB checks, MP bets 4bb, BB raises to 12bb, MP calls"}
+        ],
+        "hero_decisions": [
+          {"street": "flop", "action_taken": "bets 4bb then calls raise", "pot_before_bb": 6.5, "facing": "12bb check-raise", "position_vs_villain": "in position"}
+        ],
+        "hero_won": false,
+        "profit_bb": -15
+      },
+      "expected_concepts": ["wet board", "check-raise", "overpair vulnerability", "draws"]
+    },
+    {
+      "id": "limped_pot_multiway",
+      "description": "Multiway limped pot with middle pair",
+      "hand": {
+        "hero_position": "BB",
+        "hero_hand": "8h7h",
+        "num_players": 4,
+        "pot_type": "limped",
+        "board": "Kd 8c 3s",
+        "street_actions": [
+          {"street": "preflop", "cards": "", "actions": "SB limps, BB checks, BTN limps, CO limps"},
+          {"street": "flop", "cards": "Kd 8c 3s", "actions": "SB checks, BB bets 3bb, BTN folds, CO calls, SB folds"}
+        ],
+        "hero_decisions": [
+          {"street": "flop", "action_taken": "bets 3bb", "pot_before_bb": 4, "facing": "check", "position_vs_villain": "out of position"}
+        ],
+        "hero_won": true,
+        "profit_bb": 7
+      },
+      "expected_concepts": ["limped pot", "multiway", "range advantage", "donk bet"]
+    },
+    {
+      "id": "flush_draw_semi_bluff",
+      "description": "Semi-bluff raising with flush draw",
+      "hand": {
+        "hero_position": "BTN",
+        "hero_hand": "Ac5c",
+        "num_players": 2,
+        "pot_type": "single raised",
+        "board": "Kc 9c 4d",
+        "street_actions": [
+          {"street": "preflop", "cards": "", "actions": "BTN raises to 2.5bb, BB calls"},
+          {"street": "flop", "cards": "Kc 9c 4d", "actions": "BB bets 4bb, BTN raises to 12bb, BB folds"}
+        ],
+        "hero_decisions": [
+          {"street": "flop", "action_taken": "raises to 12bb", "pot_before_bb": 9.5, "facing": "4bb donk bet", "position_vs_villain": "in position"}
+        ],
+        "hero_won": true,
+        "profit_bb": 13.5
+      },
+      "expected_concepts": ["semi-bluff", "fold equity", "flush draw", "aggression"]
+    },
+    {
+      "id": "turn_barrel_value",
+      "description": "Value betting turn with top two pair",
+      "hand": {
+        "hero_position": "CO",
+        "hero_hand": "AdJd",
+        "num_players": 2,
+        "pot_type": "single raised",
+        "board": "As Jc 7h 3d",
+        "street_actions": [
+          {"street": "preflop", "cards": "", "actions": "CO raises to 2.5bb, BTN calls"},
+          {"street": "flop", "cards": "As Jc 7h", "actions": "CO bets 3bb, BTN calls"},
+          {"street": "turn", "cards": "3d", "actions": "CO bets 8bb, BTN calls"}
+        ],
+        "hero_decisions": [
+          {"street": "flop", "action_taken": "bets 3bb", "pot_before_bb": 5.5, "facing": "first to act", "position_vs_villain": "out of position"},
+          {"street": "turn", "action_taken": "bets 8bb", "pot_before_bb": 11.5, "facing": "first to act", "position_vs_villain": "out of position"}
+        ],
+        "hero_won": true,
+        "profit_bb": 19.5
+      },
+      "expected_concepts": ["value betting", "two pair", "sizing", "protection"]
+    },
+    {
+      "id": "preflop_squeeze",
+      "description": "Squeeze play from blinds",
+      "hand": {
+        "hero_position": "BB",
+        "hero_hand": "AhJs",
+        "num_players": 3,
+        "pot_type": "3-bet",
+        "board": "",
+        "street_actions": [
+          {"street": "preflop", "cards": "", "actions": "CO raises to 2.5bb, BTN calls, SB folds, BB 3-bets to 11bb, CO folds, BTN folds"}
+        ],
+        "hero_decisions": [
+          {"street": "preflop", "action_taken": "3-bets to 11bb", "pot_before_bb": 6.5, "facing": "raise and call", "position_vs_villain": "out of position"}
+        ],
+        "hero_won": true,
+        "profit_bb": 6.5
+      },
+      "expected_concepts": ["squeeze", "fold equity", "dead money", "3-bet"]
+    },
+    {
+      "id": "river_value_thin",
+      "description": "Thin value bet on river with second pair",
+      "hand": {
+        "hero_position": "SB",
+        "hero_hand": "Tc9c",
+        "num_players": 2,
+        "pot_type": "single raised",
+        "board": "Kh Ts 6d 2c 4h",
+        "street_actions": [
+          {"street": "preflop", "cards": "", "actions": "BTN raises to 2.5bb, SB 3-bets to 9bb, BB folds, BTN calls"},
+          {"street": "flop", "cards": "Kh Ts 6d", "actions": "SB bets 6bb, BTN calls"},
+          {"street": "turn", "cards": "2c", "actions": "SB checks, BTN checks"},
+          {"street": "river", "cards": "4h", "actions": "SB bets 10bb, BTN calls"}
+        ],
+        "hero_decisions": [
+          {"street": "flop", "action_taken": "bets 6bb", "pot_before_bb": 18.5, "facing": "first to act", "position_vs_villain": "out of position"},
+          {"street": "turn", "action_taken": "checks", "pot_before_bb": 30.5, "facing": "first to act", "position_vs_villain": "out of position"},
+          {"street": "river", "action_taken": "bets 10bb", "pot_before_bb": 30.5, "facing": "first to act", "position_vs_villain": "out of position"}
+        ],
+        "hero_won": true,
+        "profit_bb": 27.5
+      },
+      "expected_concepts": ["thin value", "second pair", "range construction", "showdown value"]
+    },
+    {
+      "id": "set_slowplay",
+      "description": "Slowplaying set on dry board",
+      "hand": {
+        "hero_position": "BB",
+        "hero_hand": "7s7d",
+        "num_players": 2,
+        "pot_type": "single raised",
+        "board": "As 7c 2d Kh 9s",
+        "street_actions": [
+          {"street": "preflop", "cards": "", "actions": "BTN raises to 2.5bb, BB calls"},
+          {"street": "flop", "cards": "As 7c 2d", "actions": "BB checks, BTN bets 2bb, BB calls"},
+          {"street": "turn", "cards": "Kh", "actions": "BB checks, BTN bets 5bb, BB raises to 14bb, BTN calls"},
+          {"street": "river", "cards": "9s", "actions": "BB bets 25bb, BTN calls"}
+        ],
+        "hero_decisions": [
+          {"street": "flop", "action_taken": "calls", "pot_before_bb": 7.5, "facing": "2bb bet", "position_vs_villain": "out of position"},
+          {"street": "turn", "action_taken": "raises to 14bb", "pot_before_bb": 17.5, "facing": "5bb bet", "position_vs_villain": "out of position"},
+          {"street": "river", "action_taken": "bets 25bb", "pot_before_bb": 45.5, "facing": "first to act", "position_vs_villain": "out of position"}
+        ],
+        "hero_won": true,
+        "profit_bb": 48
+      },
+      "expected_concepts": ["set", "slowplay", "trapping", "value extraction"]
+    }
+  ]
+}

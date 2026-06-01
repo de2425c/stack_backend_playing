@@ -1,0 +1,1082 @@
+{
+  "expected-value": {
+    "id": "expected-value",
+    "name": "Expected Value (EV)",
+    "type": "term",
+    "blurb": "The average amount you win or lose on a play over the long run\u2014poker's true currency.",
+    "body": "EV is the amount you win or lose on average over infinite repetitions of a decision. A play that's +EV makes money long-term; -EV loses money. You can't control short-term results, but you can control making +EV decisions.\n\nExample: If you bet $100 into a pot where you'll win 60% of the time and lose 40%, your EV is (0.6 \u00d7 $100) - (0.4 \u00d7 $100) = +$20. Even if you lose this specific hand, the decision was correct.",
+    "category": "core-concepts"
+  },
+  "fold-equity": {
+    "id": "fold-equity",
+    "name": "Fold Equity",
+    "type": "term",
+    "blurb": "The value gained from the chance your opponent folds to your bet or raise.",
+    "body": "Fold equity is the value gained from opponents folding. It's highest when:\n\u2022 You have a tight/aggressive image\n\u2022 The board favors your range\n\u2022 Your opponent is fit-or-fold\n\u2022 You're in position\n\nFold equity and implied odds are inversely related: against calling stations, you have low fold equity but high implied odds; against nits, the opposite.",
+    "category": "core-concepts"
+  },
+  "effective-stack": {
+    "id": "effective-stack",
+    "name": "Effective Stack",
+    "type": "term",
+    "blurb": "The smaller stack between you and your opponent\u2014determines maximum possible win/loss.",
+    "body": "Effective stack = the smaller stack between you and opponent. It caps the maximum you can win/lose.\n\n\u2022 If you have 150BB and villain has 80BB, effective stack is 80BB\n\u2022 Your extra chips don't matter against this opponent\n\nAlways think in terms of effective stacks when sizing bets and planning hand strategy.",
+    "category": "core-concepts"
+  },
+  "pot-odds": {
+    "id": "pot-odds",
+    "name": "Pot Odds",
+    "type": "term",
+    "blurb": "The ratio of the current pot to the cost of calling. Guides whether a call is profitable.",
+    "body": "Pot odds = Amount to call / (Pot + Amount to call). If the pot is $100 and you must call $50, you need $50/$150 = 33% equity to break even.\n\nCompare pot odds to your equity: if you have 40% equity and need only 33% to call, it's profitable. This is the foundation for all calling decisions with draws and bluff-catchers.",
+    "category": "core-concepts"
+  },
+  "implied-odds": {
+    "id": "implied-odds",
+    "name": "Implied Odds",
+    "type": "term",
+    "blurb": "Expected future winnings added to pot odds\u2014what you stand to win if you hit your draw.",
+    "body": "Implied odds account for money you'll win on future streets when you hit. They're highest when:\n\u2022 Stacks are deep relative to the pot\n\u2022 Your opponent is likely to pay off big hands\n\u2022 Your draw is disguised (sets > flush draws)\n\nThe set mining rule: you need to win ~30BB post-flop when you hit to justify calling a 3BB open with a small pair.",
+    "category": "core-concepts"
+  },
+  "reverse-implied-odds": {
+    "id": "reverse-implied-odds",
+    "name": "Reverse Implied Odds",
+    "type": "term",
+    "blurb": "The risk of making your hand but still losing a big pot to a better hand.",
+    "body": "Reverse implied odds occur when making your hand still loses to a better hand. Examples:\n\u2022 Flopping top pair with a weak kicker vs. a tight range\n\u2022 Making a non-nut flush on a paired board\n\u2022 Completing a straight when a flush is possible\n\nHands with reverse implied odds should be played cautiously\u2014you might hit and still lose a big pot.",
+    "category": "core-concepts"
+  },
+  "equity": {
+    "id": "equity",
+    "name": "Equity",
+    "type": "term",
+    "blurb": "Your share of the pot based on the probability of winning at showdown.",
+    "body": "Equity is your share of the pot based on your probability of winning. With 45% equity in a $100 pot, your share is $45.\n\nImportant: raw equity doesn't equal realized equity. A hand might have 40% equity but only realize 30% due to positional disadvantage or poor playability. Position, skill edge, and hand type all affect how much equity you actually capture.",
+    "category": "core-concepts"
+  },
+  "outs": {
+    "id": "outs",
+    "name": "Outs",
+    "type": "term",
+    "blurb": "Cards remaining in the deck that will complete your drawing hand.",
+    "body": "Outs are cards that improve your hand. Common counts:\n\u2022 Flush draw: 9 outs (~19% per card, ~35% by river)\n\u2022 Open-ended straight: 8 outs (~17% per card, ~31% by river)\n\u2022 Gutshot: 4 outs (~8.5% per card, ~17% by river)\n\nRule of 2 and 4: multiply outs by 2 for one card, by 4 for two cards (flop to river). Discount outs that might make you second best.",
+    "category": "core-concepts"
+  },
+  "domination": {
+    "id": "domination",
+    "name": "Domination",
+    "type": "term",
+    "blurb": "When one hand shares a card with another but has a better kicker (AK vs AQ).",
+    "body": "Domination occurs when hands share a card but one has a better kicker. AK dominates AQ\u2014when an ace flops, AQ is crushed.\n\nDominated hands have severe reverse implied odds because:\n\u2022 You'll often make top pair\n\u2022 You'll lose to the same top pair with better kicker\n\u2022 You won't know you're beat\n\nAvoid dominated hands out of position against tight ranges.",
+    "category": "ranges"
+  },
+  "opening-range": {
+    "id": "opening-range",
+    "name": "Opening Range",
+    "type": "term",
+    "blurb": "The hands you raise with when first to enter the pot\u2014varies by position.",
+    "body": "Opening range = hands you raise with when first to enter the pot. Ranges tighten from early to late position:\n\n\u2022 **UTG:** ~12% (tight, strong hands)\n\u2022 **HJ:** ~16% (add some suited connectors)\n\u2022 **CO:** ~25% (loosen up)\n\u2022 **BTN:** ~40%+ (very wide)\n\nLearn default ranges, then adjust based on table dynamics.",
+    "category": "preflop"
+  },
+  "calling-range": {
+    "id": "calling-range",
+    "name": "Calling Range",
+    "type": "term",
+    "blurb": "The hands you flat call with instead of raising or folding.",
+    "body": "Calling range = hands you flat call with instead of raising or folding.\n\nGood calling hands:\n\u2022 Hands that play well multiway (suited connectors, pairs)\n\u2022 Hands too weak to raise but too strong to fold\n\u2022 Position-dependent\u2014calling is better in position\n\nTight 3-betting ranges create space for flatting ranges; aggressive 3-betting eliminates them.",
+    "category": "preflop"
+  },
+  "steal": {
+    "id": "steal",
+    "name": "Steal",
+    "type": "term",
+    "blurb": "An open raise from late position designed to win the blinds uncontested.",
+    "body": "A steal is an open-raise from late position primarily aiming to win the blinds uncontested.\n\nSteal factors:\n\u2022 How often do blinds defend?\n\u2022 Is my hand playable if called?\n\u2022 Do I have fold equity post-flop?\n\nAgainst tight blinds, steal very wide. Against aggressive 3-bettors, tighten up or prepare to defend against re-raises.",
+    "category": "preflop"
+  },
+  "value-raise": {
+    "id": "value-raise",
+    "name": "Value Raise",
+    "type": "term",
+    "blurb": "A preflop raise with a hand strong enough to want calls from worse hands.",
+    "body": "A value raise preflop is opening or re-raising with hands strong enough to want action.\n\nValue raise hands:\n\u2022 Premium pairs (AA-TT)\n\u2022 Strong broadways (AK, AQ, KQ suited)\n\u2022 Hands that play well vs calling ranges\n\nThe key: you want worse hands to call or 3-bet. If only better hands continue, you're not value raising\u2014you're just building a pot you'll lose.",
+    "category": "preflop"
+  },
+  "semi-steal": {
+    "id": "semi-steal",
+    "name": "Semi-Steal",
+    "type": "term",
+    "blurb": "An open raise that's partially for value, partially hoping to take blinds uncontested.",
+    "body": null,
+    "category": "preflop"
+  },
+  "limp": {
+    "id": "limp",
+    "name": "Limp",
+    "type": "term",
+    "blurb": "Entering the pot by just calling the big blind instead of raising.",
+    "body": "A limp is calling the big blind instead of raising. Generally weak because:\n\n\u2022 Doesn't build pot with good hands\n\u2022 Gives free looks to blinds\n\u2022 Shows passive weakness\n\nException: limping behind limpers with speculative hands in position can be profitable when raising won't isolate.",
+    "category": "preflop"
+  },
+  "isolation-raise": {
+    "id": "isolation-raise",
+    "name": "Isolation Raise (ISO)",
+    "type": "term",
+    "blurb": "A raise designed to get heads-up with a weaker player, typically over a limper.",
+    "body": "An isolation raise targets weak limpers to:\n\u2022 Get heads-up with the fish\n\u2022 Build a pot with position and initiative\n\u2022 Take advantage of their post-flop mistakes\n\nISO triangle: Frequent Strength + Fold Equity + Position. Need 2 of 3 to be favorable.\n\nSize larger than a normal open (4-5x) to discourage calls from players behind and to punish limper's wide range.",
+    "category": "preflop"
+  },
+  "3-bet": {
+    "id": "3-bet",
+    "name": "3-Bet",
+    "type": "term",
+    "blurb": "The third bet in a sequence\u2014a re-raise of the original open raise.",
+    "body": "A 3-bet can be polar (very strong or bluffs) or linear (a continuous range of strong hands).\n\n**Polar 3-betting:** Use when you have a flatting range. 3-bet premium hands for value and some weak hands as bluffs, flat everything in between.\n\n**Linear 3-betting:** Use when flatting is bad (e.g., SB vs. late position). 3-bet your best hands in order of strength.\n\nSizing: typically 3x the open in position, 4x out of position.",
+    "category": "preflop"
+  },
+  "4-bet": {
+    "id": "4-bet",
+    "name": "4-Bet",
+    "type": "term",
+    "blurb": "A re-raise of a 3-bet, typically signaling a very strong or polarized range.",
+    "body": "4-bets are polarized by default\u2014you're either value betting or bluffing. The value range is narrow (QQ+, AK typically), so your 4-bet bluffs need:\n\u2022 Blockers to villain's value range (Ax blocks AA/AK)\n\u2022 Poor playability (hands that don't want to flat)\n\u2022 Fold equity against villain's 3-betting range\n\nAgainst wide 3-bettors, widen your 4-bet value range and add more bluffs.",
+    "category": "preflop"
+  },
+  "squeeze": {
+    "id": "squeeze",
+    "name": "Squeeze",
+    "type": "term",
+    "blurb": "A 3-bet after one or more players have called the open, sized larger to maintain fold equity.",
+    "body": "A squeeze leverages a multiway dynamic where cold callers have capped ranges. Size larger (4-5x + 1x per caller) to maintain fold equity.\n\nThree squeeze types:\n\u2022 **Bluff-bluff:** Fold equity vs both players\n\u2022 **Value-bluff:** Isolate the fish, push out the reg\n\u2022 **Value-value:** Build pot with premiums\n\nCold callers usually have capped ranges, making them vulnerable to aggression.",
+    "category": "preflop"
+  },
+  "flat": {
+    "id": "flat",
+    "name": "Flat (Cold Call)",
+    "type": "term",
+    "blurb": "Calling a raise (instead of re-raising) to see a flop, often with speculative hands.",
+    "body": "Flatting = calling a raise instead of 3-betting. Flat when:\n\n\u2022 Your hand plays well post-flop\n\u2022 You don't want to bloat the pot\n\u2022 3-betting would only get called by better\n\nFrom the SB, many players eliminate flatting entirely (3-bet or fold) due to severe positional disadvantage.",
+    "category": "preflop"
+  },
+  "set-mining": {
+    "id": "set-mining",
+    "name": "Set Mining",
+    "type": "term",
+    "blurb": "Calling preflop with a small pair hoping to flop a set and win a big pot.",
+    "body": "Set mining = calling preflop with small pairs hoping to flop a set.\n\n**The Rule:** Need to win 30BB post-flop when you hit (you'll hit ~1 in 8 times).\n\nGood set mining conditions:\n\u2022 Deep stacks (100BB+)\n\u2022 Opponent will pay off sets\n\u2022 You can get heads-up\n\nBad conditions: shallow stacks, multiway pots (harder to stack someone), aggressive 3-bettors behind.",
+    "category": "preflop"
+  },
+  "open-sizing": {
+    "id": "open-sizing",
+    "name": "Open Sizing",
+    "type": "term",
+    "blurb": "The size of your preflop open raise\u2014typically 2-3x the big blind.",
+    "body": "Open sizing balances several factors:\n\n\u2022 **2.5x:** Standard online, works on most tables\n\u2022 **3x:** Better for live, loose tables, or with premium hands\n\u2022 **4x+:** Against multiple fish who don't fold\n\nAvoid varying your size by hand strength (tells observant opponents). The same size with your whole range is less exploitable.",
+    "category": "bet-sizing"
+  },
+  "utg": {
+    "id": "utg",
+    "name": "UTG (Under the Gun)",
+    "type": "term",
+    "blurb": "First to act preflop; requires the tightest opening range due to positional disadvantage.",
+    "body": null,
+    "category": "position"
+  },
+  "hijack": {
+    "id": "hijack",
+    "name": "Hijack (HJ)",
+    "type": "term",
+    "blurb": "Two seats right of the button; a middle-late position with moderate opening ranges.",
+    "body": null,
+    "category": "position"
+  },
+  "cutoff": {
+    "id": "cutoff",
+    "name": "Cutoff (CO)",
+    "type": "term",
+    "blurb": "The seat to the right of the button; second-best position with wide opening ranges.",
+    "body": null,
+    "category": "position"
+  },
+  "button": {
+    "id": "button",
+    "name": "Button (BTN)",
+    "type": "term",
+    "blurb": "The most profitable seat\u2014acts last post-flop and can play the widest range.",
+    "body": "The button is the most profitable seat. You act last on every post-flop street and only have the blinds to get through preflop.\n\nButton strategy:\n\u2022 Open very wide (40-50%+ of hands)\n\u2022 Attack tight blinds relentlessly\n\u2022 Use position to outplay opponents post-flop\n\nMost of your winnings in poker come from playing the button well.",
+    "category": "position"
+  },
+  "small-blind": {
+    "id": "small-blind",
+    "name": "Small Blind (SB)",
+    "type": "term",
+    "blurb": "Posts half the big blind and acts first post-flop\u2014the worst position at the table.",
+    "body": "The SB is the worst position\u2014you're OOP post-flop and have already invested half a blind.\n\nSB strategy options:\n\u2022 3-bet or fold (no flatting) to avoid playing OOP\n\u2022 Complete vs. limps with playable hands\n\u2022 Defend BB's range carefully\u2014pot odds are poor\n\nMany regs play 3-bet or fold from SB because flatting leads to difficult OOP spots.",
+    "category": "position"
+  },
+  "big-blind": {
+    "id": "big-blind",
+    "name": "Big Blind (BB)",
+    "type": "term",
+    "blurb": "Posts the full blind and acts last preflop; defends wide due to pot odds.",
+    "body": "The BB closes preflop action and gets the best pot odds to defend.\n\nBB defense:\n\u2022 Defend wide vs. late position opens (especially vs. min-raises)\n\u2022 3-bet a balanced range of value and bluffs\n\u2022 Check-raise strong hands on favorable boards\n\nBB defense is crucial\u2014folding too much lets opponents steal profitably. But don't defend trash\u2014you're still OOP.",
+    "category": "position"
+  },
+  "in-position": {
+    "id": "in-position",
+    "name": "In Position (IP)",
+    "type": "term",
+    "blurb": "Acting last on post-flop streets, giving you information and control advantages.",
+    "body": "Playing in position (IP) means acting last post-flop. Advantages:\n\n\u2022 **Information:** See opponent's action before deciding\n\u2022 **Pot control:** Can check back to keep pot small\n\u2022 **Bluffing:** Easier to bluff after opponent checks\n\u2022 **Value:** Can bet for thin value with better accuracy\n\nPosition is worth significant equity\u2014hands play much better IP than OOP.",
+    "category": "position"
+  },
+  "out-of-position": {
+    "id": "out-of-position",
+    "name": "Out of Position (OOP)",
+    "type": "term",
+    "blurb": "Acting first on post-flop streets, a disadvantage due to lack of information.",
+    "body": "Playing out of position (OOP) means acting first post-flop. Disadvantages:\n\n\u2022 Must act without knowing opponent's intention\n\u2022 Harder to realize equity with marginal hands\n\u2022 Must check-raise or lead to build pots\n\u2022 Opponents can bet or check behind at will\n\nCompensate by playing tighter ranges OOP and avoiding marginal spots.",
+    "category": "position"
+  },
+  "dry-board": {
+    "id": "dry-board",
+    "name": "Dry Board",
+    "type": "term",
+    "blurb": "A board with few draws possible (e.g., K-7-2 rainbow)\u2014favors the preflop raiser.",
+    "body": "Dry boards have few draws (e.g., K\u26607\u26652\u2666). Characteristics:\n\n\u2022 Preflop raiser has big range advantage\n\u2022 Few draws = more fold equity\n\u2022 Can c-bet frequently and small\n\u2022 Turn and river unlikely to change hand values\n\nOn dry boards, c-bet wide with small sizing. The board favors your range, and opponents fold often.",
+    "category": "board-texture"
+  },
+  "wet-board": {
+    "id": "wet-board",
+    "name": "Wet Board",
+    "type": "term",
+    "blurb": "A coordinated board with many draws (e.g., J\u2660T\u26606\u2665)\u2014equity runs closer.",
+    "body": "Wet boards have many draws (e.g., J\u2660T\u26658\u2660). Characteristics:\n\n\u2022 Equity runs closer between ranges\n\u2022 More turn cards are 'action' cards\n\u2022 Need stronger hands to c-bet\n\u2022 Size larger to charge draws\n\nOn wet boards, c-bet more selectively. Check more hands and prepare for check-raises from draws and made hands.",
+    "category": "board-texture"
+  },
+  "scare-card": {
+    "id": "scare-card",
+    "name": "Scare Card",
+    "type": "term",
+    "blurb": "A turn or river card that completes obvious draws or changes the board significantly.",
+    "body": "A scare card changes the board in a way that could complete draws or improve opponent's range.\n\nCommon scare cards:\n\u2022 Third flush card\n\u2022 Straight-completing card\n\u2022 Overcard to the board\n\u2022 Pairing card\n\nScare cards are good for bluffing (you can represent the completed draw) but bad when you're trying to get value from second-best hands.",
+    "category": "board-texture"
+  },
+  "continuation-bet": {
+    "id": "continuation-bet",
+    "name": "Continuation Bet (C-bet)",
+    "type": "term",
+    "blurb": "A bet made by the preflop raiser on the flop, regardless of whether they hit.",
+    "body": "The c-bet leverages the range and initiative advantage from being the preflop aggressor. Key factors for c-betting light include: board texture (dry favors c-betting), number of opponents (heads-up is better), and position.\n\nC-bet sizing typically ranges from 33%-75% pot depending on board texture\u2014smaller on dry boards where your range advantage is clear, larger on wet boards where you need to charge draws.",
+    "category": "postflop"
+  },
+  "value-bet": {
+    "id": "value-bet",
+    "name": "Value Bet",
+    "type": "term",
+    "blurb": "A bet made with a hand you expect to be called by worse hands more often than better.",
+    "body": "A value bet is profitable when called by worse hands more than 50% of the time. Key considerations:\n\u2022 What hands in villain's range call?\n\u2022 What hands beat you that might call?\n\u2022 Is the sizing extracting maximum value?\n\nThin value betting\u2014betting marginal hands for small amounts\u2014separates good players from great ones. Missing thin value is a major leak.",
+    "category": "postflop"
+  },
+  "thin-value": {
+    "id": "thin-value",
+    "name": "Thin Value",
+    "type": "term",
+    "blurb": "Betting for value with a marginal hand that's only slightly ahead of calling range.",
+    "body": "Thin value betting means betting a hand that's only slightly ahead of the calling range. It's high-skill because:\n\u2022 You must accurately assess villain's calling range\n\u2022 You risk turning your hand into a bluff if called only by better\n\u2022 Sizing must be small enough to get called by worse\n\nThe best spots: in position on the river vs. players who call too much with weak hands.",
+    "category": "postflop"
+  },
+  "slowplay": {
+    "id": "slowplay",
+    "name": "Slowplay",
+    "type": "term",
+    "blurb": "Playing a strong hand passively to disguise its strength and trap opponents.",
+    "body": "Slowplay = checking or just calling with a strong hand to trap.\n\nSlowplay when:\n\u2022 Villain bluffs often and will keep barreling\n\u2022 You block villain's value hands\n\u2022 The board is dry and unlikely to change\n\nDon't slowplay when:\n\u2022 The board is wet with many draws\n\u2022 Villain is passive (won't build the pot for you)\n\u2022 You need protection against free cards",
+    "category": "postflop"
+  },
+  "bluff-catcher": {
+    "id": "bluff-catcher",
+    "name": "Bluff Catcher",
+    "type": "term",
+    "blurb": "A hand that beats bluffs but loses to value hands\u2014your calling decision depends on reads.",
+    "body": "A bluff-catcher beats all bluffs but loses to all value hands. Your decision becomes pure math:\n\n\u2022 How often is villain bluffing?\n\u2022 What pot odds am I getting?\n\nIf villain needs to bluff >30% of the time for your call to profit and you estimate they bluff 40%, call. Against straightforward opponents who only bet value, fold.\n\nBluff-catching is where hand reading and opponent profiling matter most.",
+    "category": "postflop"
+  },
+  "check-raise": {
+    "id": "check-raise",
+    "name": "Check-Raise",
+    "type": "term",
+    "blurb": "Checking with the intent to raise after an opponent bets\u2014a powerful leveraging play.",
+    "body": "Check-raising is checking with intent to raise after opponent bets. Use it to:\n\u2022 Build the pot with strong hands when villain will bet\n\u2022 Bluff when you have good blockers or villain bets too wide\n\u2022 Deny equity from villain's weak betting range\n\nKey factors: villain's c-bet frequency, board texture, and your range's need for protection. Don't check-raise bluff against opponents who don't fold.",
+    "category": "postflop"
+  },
+  "protection": {
+    "id": "protection",
+    "name": "Protection",
+    "type": "term",
+    "blurb": "Betting to deny free cards that could outdraw your current best hand.",
+    "body": "Protection betting = betting to deny free cards that could outdraw you.\n\nBet for protection when:\n\u2022 Your hand is vulnerable (top pair on wet board)\n\u2022 Villain has many draws in range\n\u2022 A bad turn card would kill your action\n\nDon't over-protect: if you're way ahead or way behind, protection doesn't matter. And sometimes checking induces bluffs from hands that would fold to a bet.",
+    "category": "postflop"
+  },
+  "pot-control": {
+    "id": "pot-control",
+    "name": "Pot Control",
+    "type": "term",
+    "blurb": "Keeping the pot small with medium-strength hands to avoid building a big pot you might lose.",
+    "body": "Pot control = keeping the pot small with medium-strength hands that can't stand heavy action.\n\nPot control by:\n\u2022 Checking back the flop or turn in position\n\u2022 Check-calling instead of check-raising\n\u2022 Betting small instead of large\n\nPot control is for showdown value hands\u2014strong enough to win at showdown, but not strong enough to build a big pot.",
+    "category": "postflop"
+  },
+  "showdown-value": {
+    "id": "showdown-value",
+    "name": "Showdown Value (SDV)",
+    "type": "term",
+    "blurb": "A hand strong enough to win at showdown but not strong enough to bet for value.",
+    "body": "Showdown value (SDV) means your hand can win at showdown but isn't strong enough to bet for value. Examples: middle pair, weak top pair, ace high.\n\nWith SDV:\n\u2022 Check and try to get to showdown cheaply\n\u2022 Don't turn your hand into a bluff by betting\n\u2022 Call reasonable bets, fold to heavy aggression\n\nThe key question: will betting get called by worse hands? If not, checking has more value.",
+    "category": "postflop"
+  },
+  "top-pair": {
+    "id": "top-pair",
+    "name": "Top Pair",
+    "type": "term",
+    "blurb": "A pair using the highest card on the board\u2014strength depends heavily on kicker.",
+    "body": "Top pair means pairing the highest card on board. Strength depends on:\n\n\u2022 **Kicker:** Top pair top kicker (TPTK) >> Top pair weak kicker\n\u2022 **Board texture:** Better on dry boards\n\u2022 **Opponent's range:** Strong vs wide ranges, weak vs tight\n\nTop pair is usually a value hand on flop, but becomes a bluff-catcher by river against heavy action.",
+    "category": "postflop"
+  },
+  "overpair": {
+    "id": "overpair",
+    "name": "Overpair",
+    "type": "term",
+    "blurb": "A pocket pair higher than any card on the board (e.g., QQ on J-7-2).",
+    "body": "An overpair is a pocket pair higher than any board card (e.g., QQ on J-7-4).\n\nOverpair strategy:\n\u2022 Strong on dry boards\u2014usually best hand\n\u2022 Bet for value and protection\n\u2022 More vulnerable on wet boards with many draws\n\u2022 Be cautious if opponent shows significant strength\n\nOverpairs often win medium pots and lose big pots. Know when to control pot size.",
+    "category": "postflop"
+  },
+  "underpair": {
+    "id": "underpair",
+    "name": "Underpair",
+    "type": "term",
+    "blurb": "A pocket pair lower than the highest card on the board (e.g., 77 on K-9-4).",
+    "body": null,
+    "category": "postflop"
+  },
+  "set": {
+    "id": "set",
+    "name": "Set",
+    "type": "term",
+    "blurb": "Three of a kind made with a pocket pair plus one board card\u2014a disguised monster.",
+    "body": "A set is three of a kind made with a pocket pair + one board card. Sets are:\n\n\u2022 **Disguised:** Opponents don't see it coming\n\u2022 **Strong:** Usually the best hand\n\u2022 **Stack-builders:** Often worth multiple streets of value\n\nSets are why we call preflop with small pairs (set mining). They're among the most profitable hands in poker.",
+    "category": "postflop"
+  },
+  "flush-draw": {
+    "id": "flush-draw",
+    "name": "Flush Draw",
+    "type": "term",
+    "blurb": "Four cards of the same suit needing one more to complete a flush (9 outs).",
+    "body": "A flush draw has 9 outs (~19% per card, ~35% for two cards). Strategic considerations:\n\n\u2022 **Nut flush draws:** Great for semi-bluffing\u2014even if called, you can make the nuts\n\u2022 **Non-nut draws:** More cautious\u2014you might make your flush and lose\n\u2022 **Multiway:** Check more, draws hit more often in multiway pots\n\nPosition and stack depth determine whether to play aggressively or passively.",
+    "category": "postflop"
+  },
+  "straight-draw": {
+    "id": "straight-draw",
+    "name": "Straight Draw",
+    "type": "term",
+    "blurb": "Four cards to a straight\u2014open-ended has 8 outs, gutshot has 4.",
+    "body": "Straight draws vary in strength:\n\n\u2022 **OESD (open-ended):** 8 outs (~17%/card)\n\u2022 **Gutshot:** 4 outs (~8.5%/card)\n\u2022 **Double gutter:** 8 outs but more disguised\n\nOESDs often have enough equity to semi-bluff. Gutshots are better as bluffs (low equity) or calls when getting good odds. The nuts matter\u2014drawing to the low end is risky.",
+    "category": "postflop"
+  },
+  "gutshot": {
+    "id": "gutshot",
+    "name": "Gutshot",
+    "type": "term",
+    "blurb": "An inside straight draw needing one specific card to complete (4 outs).",
+    "body": "A gutshot straight draw needs one specific card (4 outs, ~8.5% per card).\n\nGutshots are:\n\u2022 Poor for chasing (need good odds)\n\u2022 Good for bluffing (you'll miss often anyway)\n\u2022 Best when drawing to the nuts\n\nGutshots add equity to bluffs. A hand with gutshot + overcards has reasonable equity for semi-bluffing.",
+    "category": "postflop"
+  },
+  "backdoor-draw": {
+    "id": "backdoor-draw",
+    "name": "Backdoor Draw",
+    "type": "term",
+    "blurb": "A draw needing runner-runner cards\u2014adds a few percent equity and bluffing options.",
+    "body": "A backdoor draw needs runner-runner cards (e.g., two more hearts for a flush). Worth ~4% equity.\n\nBackdoor draws:\n\u2022 Add a few percent to your hand's equity\n\u2022 Make hands better candidates for floating/calling\n\u2022 Provide bluffing opportunities if they come in\n\nDon't overvalue backdoor draws, but recognize they make borderline hands slightly better.",
+    "category": "postflop"
+  },
+  "multiway-pot": {
+    "id": "multiway-pot",
+    "name": "Multiway Pot",
+    "type": "term",
+    "blurb": "A pot with 3+ players\u2014requires stronger hands since someone likely connected.",
+    "body": "Multiway pots have 3+ players. Key differences:\n\n\u2022 Someone likely hit the board\n\u2022 Bluffing is less effective\n\u2022 Strong hands gain value\n\u2022 Position is even more important\n\nIn multiway pots, tighten your c-betting and value betting ranges. Someone is more likely to have connected with the board.",
+    "category": "postflop"
+  },
+  "heads-up-pot": {
+    "id": "heads-up-pot",
+    "name": "Heads-Up Pot",
+    "type": "term",
+    "blurb": "A pot between just two players\u2014allows wider ranges and more bluffing.",
+    "body": "Heads-up pots have just two players. Advantages:\n\n\u2022 Easier to win with bluffs\n\u2022 Wider value betting range\n\u2022 Position leverage is maximized\n\u2022 More profitable overall\n\nIsolating to get heads-up is a primary goal. Your skill edge is maximized in heads-up pots.",
+    "category": "postflop"
+  },
+  "end-of-action-spot": {
+    "id": "end-of-action-spot",
+    "name": "End of Action Spot",
+    "type": "term",
+    "blurb": "When you face a bet and must decide to call, raise, or fold\u2014no free options.",
+    "body": null,
+    "category": "postflop"
+  },
+  "hero-call": {
+    "id": "hero-call",
+    "name": "Hero Call",
+    "type": "term",
+    "blurb": "Calling a big bet with a marginal hand based on a read that opponent is bluffing.",
+    "body": "A hero call is calling a big bet with a marginal hand based on a read that opponent is bluffing.\n\nHero call considerations:\n\u2022 What value hands would villain bet this way?\n\u2022 Does their line make sense for value?\n\u2022 Do I have blockers to their value range?\n\nHero calls should be rare and based on strong reads. Making crying calls without reads is a leak.",
+    "category": "postflop"
+  },
+  "overbet": {
+    "id": "overbet",
+    "name": "Overbet",
+    "type": "term",
+    "blurb": "Betting more than the pot size, typically polarizing your range to nuts or bluffs.",
+    "body": "An overbet is betting more than the pot. Use when:\n\n\u2022 Your range is polarized (nuts or bluffs)\n\u2022 You have nut advantage\n\u2022 Opponent's range is capped\n\nOverbets maximize value with monsters and put maximum pressure on bluff-catchers. Balance with some bluffs to prevent exploitation.",
+    "category": "bet-sizing"
+  },
+  "air": {
+    "id": "air",
+    "name": "Air",
+    "type": "term",
+    "blurb": "A hand with no made hand and no draw\u2014complete nothing that can only win by bluffing.",
+    "body": "Air means a hand with no made hand and no draw\u2014complete nothing.\n\nAir is:\n\u2022 The worst part of your range\n\u2022 Can only win by bluffing\n\u2022 Should sometimes be turned into a bluff\n\nIn balanced ranges, some 'air' becomes bluffs to prevent opponents from over-folding. Pure air with no blockers is the worst bluffing candidate.",
+    "category": "ranges"
+  },
+  "capped-range": {
+    "id": "capped-range",
+    "name": "Capped Range",
+    "type": "term",
+    "blurb": "A range that cannot contain the strongest hands, making it vulnerable to aggression.",
+    "body": "A range becomes capped when strong hands have been removed by prior action. Example: if you call a raise (instead of 3-betting), your range is capped\u2014you don't have AA, KK, or AK.\n\nCapped ranges are vulnerable to aggression because:\n\u2022 Opponent can bet big knowing you can't have the nuts\n\u2022 You must call with bluff-catchers more often\n\u2022 You can't credibly represent huge hands\n\nRecognize when your range is capped and adjust accordingly.",
+    "category": "ranges"
+  },
+  "uncapped-range": {
+    "id": "uncapped-range",
+    "name": "Uncapped Range",
+    "type": "term",
+    "blurb": "A range that still contains premium hands\u2014harder to exploit with aggression.",
+    "body": "An uncapped range still contains the strongest possible hands. The preflop raiser's range is typically uncapped\u2014they could have AA-KK.\n\nUncapped ranges can:\n\u2022 Support larger bet sizes (you can credibly represent the nuts)\n\u2022 Apply more pressure\n\u2022 Make opponent's bluff-catchers uncomfortable\n\nKeep your range uncapped when possible by occasionally slow-playing your monsters.",
+    "category": "ranges"
+  },
+  "open-action-spot": {
+    "id": "open-action-spot",
+    "name": "Open Action Spot",
+    "type": "term",
+    "blurb": "When action checks to you giving you the initiative to bet or check behind.",
+    "body": null,
+    "category": "postflop"
+  },
+  "ghost-equity": {
+    "id": "ghost-equity",
+    "name": "Ghost Equity",
+    "type": "term",
+    "blurb": "Equity that exists on paper but can't be realized due to position, stack depth, or playability.",
+    "body": "Ghost equity is equity that exists on paper but can't be realized due to:\n\n\u2022 Positional disadvantage\n\u2022 Poor playability\n\u2022 Future betting pressure\n\nExample: Ace-high might have 40% equity vs villain's range but will fold to aggression. That equity is 'ghost'\u2014you can't actually capture it.",
+    "category": "core-concepts"
+  },
+  "equity-realization": {
+    "id": "equity-realization",
+    "name": "Equity Realization",
+    "type": "term",
+    "blurb": "How much of your raw equity you actually capture, influenced by position and playability.",
+    "body": "Equity realization is how much of your raw equity you actually capture. A hand with 40% raw equity might only realize 30% due to:\n\n\u2022 Positional disadvantage (acting first)\n\u2022 Poor playability (hard to continue without hitting)\n\u2022 Getting raised off your equity\n\nPosition is the biggest factor\u2014in position you realize more equity. Suited connectors realize equity better than offsuit hands.",
+    "category": "core-concepts"
+  },
+  "float": {
+    "id": "float",
+    "name": "Float",
+    "type": "term",
+    "blurb": "Calling with a weak hand intending to bluff a later street when opponent shows weakness.",
+    "body": "A float call relies on fold equity on later streets rather than pot odds or implied odds. Requirements:\n\u2022 Position (you need to act last when they check)\n\u2022 A villain who gives up often after getting called\n\u2022 A board that could develop scare cards\n\nFloating differs from chasing: chasing relies on odds to hit; floating relies on taking the pot away when opponent shows weakness.",
+    "category": "postflop"
+  },
+  "semi-bluff": {
+    "id": "semi-bluff",
+    "name": "Semi-Bluff",
+    "type": "term",
+    "blurb": "Betting or raising with a draw\u2014you can win by making your hand or by opponent folding.",
+    "body": "A semi-bluff is betting or raising with a draw. You win two ways:\n1. Opponent folds immediately (fold equity)\n2. You hit your draw and win at showdown (equity)\n\nBest semi-bluffing hands have both equity and fold equity. Nut flush draws make great semi-bluffs because even if called, you can make the nuts. Weak draws should just call or fold.",
+    "category": "postflop"
+  },
+  "range-protection": {
+    "id": "range-protection",
+    "name": "Range Protection",
+    "type": "term",
+    "blurb": "Including some strong hands in checking ranges so opponents can't exploit with aggression.",
+    "body": "Range protection means keeping some strong hands in your checking range so opponents can't exploit with aggression.\n\nWithout protection:\n\u2022 Opponents can always bet when you check\n\u2022 They know you're weak\n\nWith protection:\n\u2022 They risk running into your traps\n\u2022 Your checking range has teeth",
+    "category": "ranges"
+  },
+  "combos": {
+    "id": "combos",
+    "name": "Combos",
+    "type": "term",
+    "blurb": "The number of specific hand combinations\u2014e.g., there are 6 combos of pocket aces.",
+    "body": "Combos = specific combinations of a hand type:\n\n\u2022 Pocket pairs: 6 combos each (AA = 6 combos)\n\u2022 Suited hands: 4 combos each (AKs = 4 combos)\n\u2022 Offsuit hands: 12 combos each (AKo = 12 combos)\n\nCounting combos helps estimate range composition. On an A-high board, opponent has 12 combos of AK but only 6 of AA.",
+    "category": "ranges"
+  },
+  "blockers": {
+    "id": "blockers",
+    "name": "Blockers",
+    "type": "term",
+    "blurb": "Cards in your hand that reduce the combos of specific hands your opponent can hold.",
+    "body": "Blockers matter most in close decisions. Holding the A\u2660 when there are three spades on board reduces opponent's nut flush combos. When bluffing, you want blockers to hands that would call; when value betting, you want to unblock their calling range.\n\nBlocker effects are subtle\u2014they shift frequencies by small percentages, so prioritize them only after considering more important factors.",
+    "category": "ranges"
+  },
+  "polarized-range": {
+    "id": "polarized-range",
+    "name": "Polarized Range",
+    "type": "term",
+    "blurb": "A range split between very strong hands and bluffs, with few medium-strength hands.",
+    "body": "Polarized betting makes sense when you can credibly represent the nuts and your medium hands prefer to check for pot control. The defender must call with bluff-catchers at a frequency that prevents you from profiting with any two cards.\n\nExample: On a river where you'd only bet AA or complete air, your range is polarized. This differs from a linear range where you bet your best hands in order of strength.",
+    "category": "ranges"
+  },
+  "linear-range": {
+    "id": "linear-range",
+    "name": "Linear Range",
+    "type": "term",
+    "blurb": "A range of hands ordered by strength\u2014you bet your best hands, check your worst.",
+    "body": "A linear range is ordered by hand strength\u2014you include your best hands and cut off at a threshold.\n\nUse linear 3-betting when:\n\u2022 You don't want a flatting range (e.g., SB)\n\u2022 You're against a wide opener\n\u2022 Position or rake makes flatting unprofitable\n\nContrast with polar: polar splits into value/bluffs with a flatting range in between; linear has no gap.",
+    "category": "ranges"
+  },
+  "3-bet-bluff": {
+    "id": "3-bet-bluff",
+    "name": "3-Bet Bluff",
+    "type": "term",
+    "blurb": "A 3-bet with a hand not strong enough for value, relying on fold equity.",
+    "body": "A 3-bet bluff is 3-betting with a hand not strong enough for value, relying on fold equity.\n\nGood 3-bet bluff candidates:\n\u2022 Suited aces (blockers to AA/AK, nut potential)\n\u2022 Suited connectors (equity if called)\n\u2022 Hands too weak to flat profitably\n\n3-bet bluffs balance your value 3-bets and prevent opponents from always calling.",
+    "category": "preflop"
+  },
+  "board-coverage": {
+    "id": "board-coverage",
+    "name": "Board Coverage",
+    "type": "term",
+    "blurb": "Having hands in your range that connect with various board textures.",
+    "body": "Board coverage means having hands that connect with various board types.\n\nGood board coverage includes:\n\u2022 High cards (for high boards)\n\u2022 Suited hands (for flush boards)\n\u2022 Connectors (for coordinated boards)\n\nRanges without board coverage become predictable on certain textures.",
+    "category": "ranges"
+  },
+  "minimum-defense-frequency": {
+    "id": "minimum-defense-frequency",
+    "name": "Minimum Defense Frequency (MDF)",
+    "type": "term",
+    "blurb": "How often you must defend against a bet to prevent opponent from profiting with any bluff.",
+    "body": "MDF = Pot / (Pot + Bet). It tells you how often to defend to prevent opponent from auto-profiting with any two cards.\n\n\u2022 Pot-sized bet: MDF = 50%\n\u2022 Half-pot bet: MDF = 67%\n\u2022 1/3 pot bet: MDF = 75%\n\nIn practice, adjust MDF based on:\n\u2022 Opponent's actual bluffing frequency\n\u2022 Whether your range is capped\n\u2022 Board texture and range interactions",
+    "category": "core-concepts"
+  },
+  "4-bet-bluff": {
+    "id": "4-bet-bluff",
+    "name": "4-Bet Bluff",
+    "type": "term",
+    "blurb": "A 4-bet as a bluff\u2014high-risk, high-reward against wide 3-bettors.",
+    "body": "A 4-bet bluff is the highest-risk preflop bluff. Requirements:\n\n\u2022 Good blockers (Ax blocks AA/AK)\n\u2022 Fold equity against villain's 3-betting range\n\u2022 Willingness to continue if called/5-bet\n\n4-bet bluffs are rare and should be used selectively against wide 3-bettors.",
+    "category": "preflop"
+  },
+  "cold-4-bet": {
+    "id": "cold-4-bet",
+    "name": "Cold 4-Bet",
+    "type": "term",
+    "blurb": "A 4-bet from a player not involved in the original raise/3-bet action\u2014very strong range.",
+    "body": "A cold 4-bet comes from someone not involved in the original raise/3-bet action.\n\nCold 4-bets are extremely strong because:\n\u2022 You're facing two already-aggressive players\n\u2022 Your range should be QQ+, AK only\n\u2022 It screams strength\n\nRespect cold 4-bets\u2014they're rarely bluffs.",
+    "category": "preflop"
+  },
+  "fit-or-fold": {
+    "id": "fit-or-fold",
+    "name": "Fit or Fold",
+    "type": "term",
+    "blurb": "A player type who only continues when they connect with the board\u2014exploitable.",
+    "body": "Fit-or-fold players continue only when they connect with the board.\n\nExploiting fit-or-fold:\n\u2022 C-bet frequently and small\n\u2022 Take down many pots with air\n\u2022 When they call/raise, respect it\u2014they have something\n\nThe min-donk/fold player is classic fit-or-fold. Pressure them relentlessly.",
+    "category": "postflop"
+  },
+  "double-barrel": {
+    "id": "double-barrel",
+    "name": "Double Barrel",
+    "type": "term",
+    "blurb": "Following up a flop c-bet with another bet on the turn, for value or as a bluff.",
+    "body": "A double barrel is betting the turn after c-betting the flop. Good double barrel spots:\n\u2022 Scare cards that favor your range (overcards, completing draws)\n\u2022 Against fit-or-fold opponents who call flop then fold turn\n\u2022 When you picked up equity (turned a draw)\n\nBad spots: against calling stations, on blank turns, when opponent check-raised flop or showed strength.",
+    "category": "postflop"
+  },
+  "triple-barrel": {
+    "id": "triple-barrel",
+    "name": "Triple Barrel",
+    "type": "term",
+    "blurb": "Betting all three streets\u2014a strong line representing a big hand or committed bluff.",
+    "body": "Triple barreling\u2014betting all three streets\u2014is the most committed bluffing line. Requirements:\n\u2022 A credible story (your line must make sense for value)\n\u2022 Blockers to opponent's calling range\n\u2022 An opponent capable of folding strong hands\n\nMany players under-bluff rivers. Against thinking opponents, you need some triple barrel bluffs to get paid on your value hands.",
+    "category": "postflop"
+  },
+  "delayed-c-bet": {
+    "id": "delayed-c-bet",
+    "name": "Delayed C-Bet",
+    "type": "term",
+    "blurb": "Checking the flop as the preflop raiser, then betting the turn when checked to again.",
+    "body": "A delayed c-bet is checking flop, then betting turn when checked to again. Use it when:\n\u2022 Flop is bad for your range (opponent has advantage)\n\u2022 Your hand benefits from a free card\n\u2022 You want to trap with a strong hand\n\nDelayed c-betting balances your flop checking range and keeps opponents guessing about your hand strength when you don't bet the flop.",
+    "category": "postflop"
+  },
+  "probe-bet": {
+    "id": "probe-bet",
+    "name": "Probe Bet",
+    "type": "term",
+    "blurb": "Betting into the preflop aggressor after they check, probing for weakness.",
+    "body": "A probe bet is betting into the aggressor after they check back. It exploits their capped range (they would've bet strong hands).\n\nGood probe spots:\n\u2022 Opponent checks back flop in position\n\u2022 Turn card is a scare card for their range\n\u2022 You have some equity or blockers\n\nProbe bets work because checking back caps opponent's range, making them vulnerable to aggression on later streets.",
+    "category": "postflop"
+  },
+  "single-raised-pot": {
+    "id": "single-raised-pot",
+    "name": "Single Raised Pot (SRP)",
+    "type": "term",
+    "blurb": "A pot with only one preflop raise\u2014the most common pot type you'll play.",
+    "body": "A single raised pot (SRP) has one preflop raise and callers\u2014the most common pot type.\n\nSRP characteristics:\n\u2022 SPR is high (lots of post-flop play)\n\u2022 Ranges are wider\n\u2022 Position matters a lot\n\nContrast with 3-bet pots which have lower SPR and narrower ranges.",
+    "category": "postflop"
+  },
+  "stack-to-pot-ratio": {
+    "id": "stack-to-pot-ratio",
+    "name": "Stack-to-Pot Ratio (SPR)",
+    "type": "term",
+    "blurb": "Effective stack divided by the pot\u2014lower SPR favors committing with made hands.",
+    "body": "SPR = Effective Stack / Pot. It determines commitment thresholds:\n\n\u2022 SPR < 4: Top pair is often good enough to stack off\n\u2022 SPR 4-10: Need two pair or better to commit comfortably\n\u2022 SPR > 13: Need very strong hands to get stacks in\n\n3-bet pots have lower SPR, which is why big pairs play well\u2014you can get all-in with overpairs more comfortably.",
+    "category": "core-concepts"
+  },
+  "range-advantage": {
+    "id": "range-advantage",
+    "name": "Range Advantage",
+    "type": "term",
+    "blurb": "When your range contains more strong hands than your opponent's on a given board.",
+    "body": "Range advantage means your range contains more strong hands on this board than opponent's.\n\nExample: On K-7-2 rainbow, the preflop raiser has range advantage (more Kx, overpairs). On 7-6-5 two-tone, the caller might have range advantage (more suited connectors).\n\nWith range advantage, you can c-bet more frequently. Without it, check more and let opponent make mistakes.",
+    "category": "ranges"
+  },
+  "nut-potential": {
+    "id": "nut-potential",
+    "name": "Nut Potential",
+    "type": "term",
+    "blurb": "A hand's ability to make the nuts\u2014more valuable deeper stacked where big pots develop.",
+    "body": "Nut potential = a hand's ability to make the absolute nuts.\n\nHigh nut potential:\n\u2022 Suited aces (nut flush)\n\u2022 High suited connectors (nut straight)\n\u2022 Pocket pairs (sets)\n\nNut potential matters more when deep stacked\u2014big pots develop where having the nuts is crucial.",
+    "category": "core-concepts"
+  },
+  "pot-committed": {
+    "id": "pot-committed",
+    "name": "Pot Committed",
+    "type": "term",
+    "blurb": "Having invested enough that folding is mathematically incorrect regardless of hand strength.",
+    "body": "You're pot committed when you've invested so much that folding is mathematically incorrect.\n\nGeneral rule: when remaining stack < pot, you're effectively pot committed.\n\nRecognize pot commitment before it happens:\n\u2022 Plan ahead\u2014can you fold to a raise?\n\u2022 If not, don't make the initial bet\n\u2022 In 3-bet pots, SPR often makes commitment automatic",
+    "category": "core-concepts"
+  },
+  "deep-stacked": {
+    "id": "deep-stacked",
+    "name": "Deep Stacked",
+    "type": "term",
+    "blurb": "Playing with 150+ big blinds\u2014favors speculative hands with nut potential.",
+    "body": "Deep stacked means playing with 150+ big blinds. Changes strategy:\n\n\u2022 Implied odds increase\u2014speculative hands improve\n\u2022 Nut potential matters more\n\u2022 Can't stack off as easily with one pair\n\u2022 More street-by-street play\n\nPlay more suited connectors, small pairs. Play big pairs more cautiously\u2014they become bluff-catchers by river.",
+    "category": "core-concepts"
+  },
+  "short-stacked": {
+    "id": "short-stacked",
+    "name": "Short Stacked",
+    "type": "term",
+    "blurb": "Playing with fewer than 50 big blinds\u2014favors simpler push/fold and value-heavy play.",
+    "body": "Short stacked means playing with <50 big blinds. Strategy shifts:\n\n\u2022 Implied odds decrease\u2014speculative hands worse\n\u2022 Push/fold becomes dominant strategy\n\u2022 Premium hands gain value\n\u2022 Less room for post-flop play\n\nWith 20-30BB, open-shove is often correct. With 10-15BB, basically every decision is shove or fold.",
+    "category": "core-concepts"
+  },
+  "donk-bet": {
+    "id": "donk-bet",
+    "name": "Donk Bet",
+    "type": "term",
+    "blurb": "A bet from out of position into the preflop aggressor\u2014often weak, sometimes a trap.",
+    "body": "A donk bet is leading into the preflop aggressor. It's often weak (recreational players 'protecting' hands) but can be strong.\n\nCommon donk bet meanings:\n\u2022 Min donk: usually weak, often folds to raise\n\u2022 Large donk: polarized\u2014very strong or a bluff\n\u2022 From fish: typically weak top pair or draws\n\nDefault response: raise for information against weak donks, proceed cautiously against large ones.",
+    "category": "postflop"
+  },
+  "exploitative-play": {
+    "id": "exploitative-play",
+    "name": "Exploitative Play",
+    "type": "term",
+    "blurb": "Deviating from balanced strategy to target specific weaknesses in your opponent's game.",
+    "body": null,
+    "category": "core-concepts"
+  },
+  "trips": {
+    "id": "trips",
+    "name": "Trips",
+    "type": "term",
+    "blurb": "Three of a kind using two board cards and one hole card\u2014more visible than a set.",
+    "body": "Trips are three of a kind using two board cards + one hole card (e.g., holding K7 on K-K-5).\n\nTrips vs. sets:\n\u2022 Trips are visible\u2014opponents see the pair\n\u2022 More likely to be counterfeited\n\u2022 Kicker matters more (both players could have trips)\n\nTrips are strong but not as hidden or invincible as sets. Play cautiously if the board pairs again.",
+    "category": "postflop"
+  },
+  "kicker": {
+    "id": "kicker",
+    "name": "Kicker",
+    "type": "term",
+    "blurb": "The unpaired side card that breaks ties\u2014AK beats AQ when both make a pair of aces.",
+    "body": null,
+    "category": "postflop"
+  },
+  "broadway": {
+    "id": "broadway",
+    "name": "Broadway",
+    "type": "term",
+    "blurb": "The five highest cards (A-K-Q-J-T). Broadway hands connect well and make strong pairs.",
+    "body": null,
+    "category": "ranges"
+  },
+  "variance": {
+    "id": "variance",
+    "name": "Variance",
+    "type": "term",
+    "blurb": "Natural swings in results due to luck\u2014even winning players face losing stretches.",
+    "body": "Variance is the natural fluctuation in results due to luck. Even winning players experience:\n\n\u2022 Losing days, weeks, or months\n\u2022 Bad beats and coolers\n\u2022 Hands that 'should' have won\n\nManaging variance:\n\u2022 Proper bankroll management (20-30 buy-ins minimum)\n\u2022 Focus on decisions, not results\n\u2022 Accept that short-term results are largely luck\n\nLong-term, skill determines results. Short-term, variance rules.",
+    "category": "core-concepts"
+  },
+  "tilt": {
+    "id": "tilt",
+    "name": "Tilt",
+    "type": "term",
+    "blurb": "Emotional state causing poor decisions\u2014usually triggered by bad beats or frustration.",
+    "body": "Tilt is the emotional state that leads to poor decisions, usually triggered by:\n\n\u2022 Bad beats\n\u2022 Running bad\n\u2022 Frustration with opponents\n\nTilt manifests as:\n\u2022 Playing too many hands\n\u2022 Calling when you should fold\n\u2022 Making revenge plays\n\nRecognize your tilt triggers and stop playing when tilted. Lost EV from tilt often exceeds gains from good play.",
+    "category": "core-concepts"
+  },
+  "stack-off": {
+    "id": "stack-off",
+    "name": "Stack Off",
+    "type": "term",
+    "blurb": "Committing your entire stack\u2014getting all-in with a hand you're willing to play for stacks.",
+    "body": "Stacking off means getting all your chips in. Key questions:\n\n\u2022 Is my hand strong enough to stack off for value?\n\u2022 What hands call that I beat?\n\u2022 What hands fold that beat me?\n\nStack-off decisions depend on SPR. Low SPR (3-bet pots): top pair is often good enough. High SPR (deep single-raised pots): need much stronger hands.",
+    "category": "postflop"
+  },
+  "shove": {
+    "id": "shove",
+    "name": "Shove",
+    "type": "term",
+    "blurb": "Going all-in, typically as an aggressive action putting maximum pressure on opponents.",
+    "body": "A shove (all-in) commits your entire stack. Use when:\n\n\u2022 **For value:** Opponent will call with worse\n\u2022 **As a bluff:** Opponent folds better hands\n\u2022 **For fold equity + equity:** Semi-bluff shoves\n\nShoving simplifies decisions\u2014opponent must call or fold. Effective stack depth matters: shortstacked play centers around shove-or-fold decisions.",
+    "category": "postflop"
+  },
+  "overcall": {
+    "id": "overcall",
+    "name": "Overcall",
+    "type": "term",
+    "blurb": "Calling after another player has already called\u2014requires a stronger range than cold calling.",
+    "body": "An overcall is calling after someone else has already called. It requires a tighter range because:\n\n\u2022 More players = harder to win at showdown\n\u2022 Someone already showed interest in the pot\n\u2022 Squeeze potential from players behind\n\nOvercall with hands that play well multiway: suited connectors, pocket pairs, suited aces.",
+    "category": "preflop"
+  },
+  "bluff-raise": {
+    "id": "bluff-raise",
+    "name": "Bluff Raise",
+    "type": "term",
+    "blurb": "Raising without a made hand, relying purely on fold equity to win the pot.",
+    "body": "A bluff raise is raising without a made hand, relying purely on fold equity.\n\nBest bluff raise spots:\n\u2022 Against weak betting ranges\n\u2022 On boards that favor your range\n\u2022 With blockers to their continuing range\n\nBluff raises amplify risk but can take down big pots. Use them selectively against opponents who fold to aggression.",
+    "category": "postflop"
+  },
+  "runout": {
+    "id": "runout",
+    "name": "Runout",
+    "type": "term",
+    "blurb": "The sequence of turn and river cards\u2014different runouts favor different ranges.",
+    "body": "The runout is the sequence of turn and river cards. Different runouts favor different ranges.\n\nAnalyzing runouts:\n\u2022 Did the board change dramatically?\n\u2022 Which draws completed?\n\u2022 Did it favor hero's range or villain's?\n\nGood runouts for bluffing: scare cards that you can credibly represent. Good for value: bricks that don't complete draws.",
+    "category": "board-texture"
+  },
+  "nut-flush-draw": {
+    "id": "nut-flush-draw",
+    "name": "Nut Flush Draw",
+    "type": "term",
+    "blurb": "A flush draw with the ace\u2014when it hits, you have the best possible flush.",
+    "body": "A nut flush draw is a flush draw with the ace of the suit. Advantages:\n\n\u2022 If you hit, you have the best possible flush\n\u2022 Can semi-bluff aggressively\n\u2022 Opponent might have a weaker flush draw\n\nNut flush draws are much better than non-nut draws. The difference is you can stack off confidently when you hit.",
+    "category": "postflop"
+  },
+  "two-pair": {
+    "id": "two-pair",
+    "name": "Two Pair",
+    "type": "term",
+    "blurb": "A hand with two different pairs\u2014strength depends on which pairs and the board texture.",
+    "body": "Two pair's strength depends on which pairs you have:\n\n\u2022 **Top two:** Usually very strong, bet for value\n\u2022 **Top and bottom/Middle pairs:** More vulnerable\n\u2022 **Board two pair:** You just have kicker, be cautious\n\nTwo pair plays best on dry boards. On wet boards, you're more likely to be up against straights or flushes.",
+    "category": "postflop"
+  },
+  "boat": {
+    "id": "boat",
+    "name": "Boat (Full House)",
+    "type": "term",
+    "blurb": "Three of a kind plus a pair\u2014a very strong hand, but can lose to higher boats.",
+    "body": null,
+    "category": "postflop"
+  },
+  "fish": {
+    "id": "fish",
+    "name": "Fish",
+    "type": "term",
+    "blurb": "A weak player who makes frequent mistakes\u2014the primary source of profit at the table.",
+    "body": "Fish are weak players who make frequent strategic errors. Types:\n\n\u2022 **Fit-or-fold fish:** Plays wide preflop, folds to c-bets. Exploit with frequent bluffs.\n\u2022 **Calling station:** Never folds. Exploit with relentless value betting, never bluff.\n\u2022 **Maniac fish:** Raises and bluffs too much. Exploit by calling down lighter.\n\u2022 **Whale:** Extreme fish with deep pockets. Maximize time in pots with them.",
+    "category": "core-concepts"
+  },
+  "calling-station": {
+    "id": "calling-station",
+    "name": "Calling Station",
+    "type": "term",
+    "blurb": "A player who calls too often and rarely folds\u2014value bet relentlessly, don't bluff.",
+    "body": "Calling stations are players who call too often and rarely fold or raise. Adjustments:\n\n\u2022 **Value bet relentlessly**\u2014thin value is extremely profitable\n\u2022 **Never bluff**\u2014they'll call with any pair\n\u2022 **Size bigger for value**\u2014they call anyway\n\u2022 **Don't slow-play**\u2014they won't build the pot for you\n\nAgainst stations, your entire edge comes from value betting. Fancy plays are worthless.",
+    "category": "core-concepts"
+  },
+  "whale": {
+    "id": "whale",
+    "name": "Whale",
+    "type": "term",
+    "blurb": "An extremely loose, wealthy fish making massive errors\u2014isolate at every opportunity.",
+    "body": "Whales are extreme fish with deep pockets who make massive errors repeatedly.\n\nWhale strategy:\n\u2022 Isolate them at every opportunity\n\u2022 Value bet relentlessly and wide\n\u2022 Don't get fancy\u2014straightforward value\n\u2022 Accept variance for the massive edge\n\nWhales are rare. When you find one, maximize your time in pots with them.",
+    "category": "core-concepts"
+  },
+  "nit": {
+    "id": "nit",
+    "name": "Nit",
+    "type": "term",
+    "blurb": "An overly tight player who only plays premium hands\u2014steal their blinds relentlessly.",
+    "body": "Nits are overly tight players who only play premium hands. Exploitations:\n\n\u2022 Steal their blinds relentlessly\n\u2022 Fold when they show aggression (they have it)\n\u2022 Don't pay off their value bets\n\u2022 3-bet them light\u2014they fold too much\n\nNits are easy to play against: take their blinds, and when they fight back, respect it and fold.",
+    "category": "core-concepts"
+  },
+  "reg": {
+    "id": "reg",
+    "name": "Reg (Regular)",
+    "type": "term",
+    "blurb": "A competent player who plays regularly\u2014expect balanced, thoughtful play from them.",
+    "body": "Regs (regulars) are competent players who play frequently. Expect:\n\n\u2022 Balanced, thoughtful play\n\u2022 Awareness of your tendencies\n\u2022 Adjustments to your leaks\n\nAgainst regs, stick to fundamentally sound play. Major exploits come from identifying their specific leaks over time.",
+    "category": "core-concepts"
+  },
+  "tight-aggressive": {
+    "id": "tight-aggressive",
+    "name": "Tight-Aggressive (TAG)",
+    "type": "term",
+    "blurb": "Playing few hands but betting/raising aggressively\u2014the standard winning style.",
+    "body": "TAG (Tight-Aggressive) is the fundamental winning style:\n\n\u2022 **Tight:** Play fewer hands but play them well\n\u2022 **Aggressive:** Bet and raise more than call\n\nBenefits of TAG:\n\u2022 Strong ranges that are easy to play\n\u2022 Fold equity from tight image\n\u2022 Less difficult decisions\n\nTAG is the recommended starting style. Once mastered, you can add LAG elements exploitatively.",
+    "category": "core-concepts"
+  },
+  "loose-aggressive": {
+    "id": "loose-aggressive",
+    "name": "Loose-Aggressive (LAG)",
+    "type": "term",
+    "blurb": "Playing many hands aggressively\u2014high variance but exploits passive opponents.",
+    "body": "LAG (Loose-Aggressive) plays many hands aggressively. Pros:\n\u2022 Harder to read (wider range)\n\u2022 Wins more pots through aggression\n\u2022 Exploits passive opponents\n\nCons:\n\u2022 Higher variance\n\u2022 More difficult post-flop decisions\n\u2022 Requires strong hand reading\n\nLAG works against weak players and timid regulars. Against good players, revert to TAG fundamentals.",
+    "category": "core-concepts"
+  },
+  "initiative": {
+    "id": "initiative",
+    "name": "Initiative",
+    "type": "term",
+    "blurb": "Being the last aggressor\u2014gives you the option to bet or check on future streets.",
+    "body": "Initiative belongs to the last aggressor. Having initiative means:\n\u2022 You can bet or check on future streets\n\u2022 Opponents must react to your decisions\n\u2022 You control pot size\n\nSeizing initiative: Raise instead of call. After an opponent checks, betting takes the initiative.\n\nLosing initiative: Calling a bet. Now opponent controls the action on the next street.",
+    "category": "core-concepts"
+  },
+  "dead-money": {
+    "id": "dead-money",
+    "name": "Dead Money",
+    "type": "term",
+    "blurb": "Money in the pot from players who have folded\u2014increases incentive to fight for the pot.",
+    "body": "Dead money is money in the pot from players who've folded or will likely fold. It increases your incentive to fight for the pot.\n\nExamples:\n\u2022 Blinds when you open-raise\n\u2022 Cold callers' money when you 3-bet\n\u2022 Limpers' contributions when you isolate\n\nMore dead money = more incentive to be aggressive. Squeeze plays work partly because there's so much dead money to win.",
+    "category": "core-concepts"
+  },
+  "rainbow": {
+    "id": "rainbow",
+    "name": "Rainbow",
+    "type": "term",
+    "blurb": "A board with three different suits\u2014no flush draw possible on the flop.",
+    "body": "A rainbow board has three different suits (e.g., K\u26607\u26652\u2666). No flush draw is possible.\n\nRainbow boards:\n\u2022 Favor the preflop raiser (fewer draws to defend with)\n\u2022 Allow smaller c-bet sizing\n\u2022 More static\u2014turn unlikely to change much\n\nC-bet frequently on rainbow boards, especially when they're also unconnected.",
+    "category": "board-texture"
+  },
+  "monotone": {
+    "id": "monotone",
+    "name": "Monotone",
+    "type": "term",
+    "blurb": "A board with all cards the same suit\u2014flush already possible, very wet texture.",
+    "body": "A monotone board has all cards the same suit (e.g., J\u26608\u26604\u2660). A flush is already possible.\n\nMonotone boards:\n\u2022 Dramatically change hand values\n\u2022 Pairs without the flush card are weak\n\u2022 Need to hold the nut flush card to continue comfortably\n\nProceed cautiously without a flush or nut flush draw. These boards heavily favor whoever flopped the flush.",
+    "category": "board-texture"
+  },
+  "paired-board": {
+    "id": "paired-board",
+    "name": "Paired Board",
+    "type": "term",
+    "blurb": "A board with a pair showing\u2014full houses and quads possible, changes hand values.",
+    "body": "A paired board has a pair showing (e.g., K-K-7). Full houses and quads become possible.\n\nPaired board considerations:\n\u2022 Top pair loses to trips\n\u2022 Flush draws face full house risk\n\u2022 Checking ranges widen (harder to have hit)\n\nPaired boards favor checking because fewer hands connect strongly.",
+    "category": "board-texture"
+  },
+  "connected-board": {
+    "id": "connected-board",
+    "name": "Connected Board",
+    "type": "term",
+    "blurb": "A board with cards close in rank (e.g., 8-9-T)\u2014many straight draws possible.",
+    "body": "A connected board has cards close in rank allowing straight draws (e.g., 9-8-6).\n\nConnected boards:\n\u2022 Many players have draws\n\u2022 Straight completes are more common\n\u2022 C-bet less frequently\n\u2022 Size larger to charge draws\n\nBe cautious c-betting without a plan\u2014you'll face raises and calls often.",
+    "category": "board-texture"
+  },
+  "aggression": {
+    "id": "aggression",
+    "name": "Aggression",
+    "type": "term",
+    "blurb": "Betting and raising rather than calling\u2014forces opponents to make difficult decisions.",
+    "body": "Aggression (betting and raising instead of checking and calling) is fundamental to winning poker:\n\n\u2022 **Fold equity:** You can win without showdown\n\u2022 **Initiative:** You control the pot size\n\u2022 **Information:** Opponents must react to your bets\n\nThe saying 'tight is right, but aggression is king' captures this. Passive play\u2014checking and calling\u2014gives up too much value.",
+    "category": "core-concepts"
+  },
+  "passive": {
+    "id": "passive",
+    "name": "Passive",
+    "type": "term",
+    "blurb": "A style favoring checking and calling over betting\u2014gives up initiative and fold equity.",
+    "body": "Passive play means checking and calling more than betting and raising.\n\nPassive tendencies indicate:\n\u2022 Opponent won't bet without strong hands\n\u2022 Their checks are weak\n\u2022 Their calls are 'sticky' (calling stations)\n\nAgainst passive players: value bet relentlessly, steal pots when they check.",
+    "category": "core-concepts"
+  },
+  "oesd": {
+    "id": "oesd",
+    "name": "Open-Ended Straight Draw (OESD)",
+    "type": "term",
+    "blurb": "A straight draw that can be completed by cards on either end\u20148 outs.",
+    "body": "An OESD (Open-Ended Straight Draw) can be completed by cards on either end (e.g., 7-8 on 9-T-2 hits any J or 6).\n\n8 outs = ~17% per card, ~31% by river.\n\nOESDs have enough equity to:\n\u2022 Call most bets\n\u2022 Semi-bluff aggressively\n\u2022 Check-raise as bluffs",
+    "category": "postflop"
+  },
+  "combo-draw": {
+    "id": "combo-draw",
+    "name": "Combo Draw",
+    "type": "term",
+    "blurb": "A hand with both flush and straight draws\u2014often has enough equity to play aggressively.",
+    "body": "A combo draw combines flush and straight draws (e.g., J\u2660T\u2660 on 9\u26608\u26662\u2660). These hands have massive equity (~50%+).\n\nCombo draw strategy:\n\u2022 Usually play aggressively\u2014you often have fold equity + equity\n\u2022 Can check-raise, lead, or raise c-bets\n\u2022 Even if behind, you have many outs\n\nCombo draws are premium semi-bluffing hands. Don't play them passively.",
+    "category": "postflop"
+  },
+  "nut-advantage": {
+    "id": "nut-advantage",
+    "name": "Nut Advantage",
+    "type": "term",
+    "blurb": "Having more nutted hands in your range than opponent\u2014allows for larger bet sizes.",
+    "body": "Nut advantage means your range contains more of the strongest possible hands.\n\nWith nut advantage:\n\u2022 You can use larger bet sizes\n\u2022 You can pressure opponent's entire range\n\u2022 Opponent must call with bluff-catchers or fold\n\nRecognize when you have nut advantage and leverage it with big bets. Without it, size smaller.",
+    "category": "ranges"
+  },
+  "equity-denial": {
+    "id": "equity-denial",
+    "name": "Equity Denial",
+    "type": "term",
+    "blurb": "Betting to prevent opponent from seeing free cards that could improve their hand.",
+    "body": "Equity denial is betting to prevent opponents from seeing free cards that could improve their hand.\n\nDeny equity when:\n\u2022 You have a vulnerable made hand\n\u2022 Opponent has many draws in range\n\u2022 The board will change on future streets\n\nEquity denial is a reason to bet even if you won't get called by worse\u2014you're charging them to draw.",
+    "category": "postflop"
+  },
+  "card-removal": {
+    "id": "card-removal",
+    "name": "Card Removal",
+    "type": "term",
+    "blurb": "How your hole cards reduce the likelihood of opponent holding certain hands (blockers).",
+    "body": "Card removal (blockers) affects how often opponent can hold certain hands.\n\nKey blocker applications:\n\u2022 Holding A\u2660 reduces opponent's AA and AK combos\n\u2022 Blocking their value range makes bluffs better\n\u2022 Blocking their bluffing range makes calls worse\n\nBlockers matter most in close spots. Don't overweight them vs fundamentals.",
+    "category": "ranges"
+  },
+  "villain": {
+    "id": "villain",
+    "name": "Villain",
+    "type": "term",
+    "blurb": "Your opponent in a hand\u2014the player whose range and tendencies you're analyzing.",
+    "body": "Villain is your opponent whose range and tendencies you're trying to read.\n\nAnalyzing villain:\n\u2022 What's their player type?\n\u2022 What does their line represent?\n\u2022 What would villain do with strong/weak/medium hands?\n\nPutting villain on a range, not a specific hand, is key to good decision making.",
+    "category": "core-concepts"
+  },
+  "hero": {
+    "id": "hero",
+    "name": "Hero",
+    "type": "term",
+    "blurb": "You, the player whose perspective we're analyzing\u2014the protagonist of the hand.",
+    "body": "Hero is you\u2014the player whose decisions we're analyzing. In hand discussions:\n\n\u2022 Hero's actions are the focus\n\u2022 We have perfect information about hero's cards\n\u2022 The goal is finding hero's optimal play\n\nWhen analyzing hands, always think from hero's perspective with the information available at decision time.",
+    "category": "core-concepts"
+  },
+  "vpip": {
+    "id": "vpip",
+    "name": "VPIP",
+    "type": "term",
+    "blurb": "Voluntarily Put $ In Pot\u2014percentage of hands a player enters. Higher = looser.",
+    "body": "VPIP (Voluntarily Put $ In Pot) measures how many hands someone plays:\n\n\u2022 **<20%:** Very tight (nit territory)\n\u2022 **20-28%:** Tight but reasonable\n\u2022 **28-35%:** Loose, likely recreational\n\u2022 **>40%:** Very loose fish\n\nVPIP helps identify player types. High VPIP means wide range = value bet more, bluff less.",
+    "category": "core-concepts"
+  },
+  "pfr": {
+    "id": "pfr",
+    "name": "PFR",
+    "type": "term",
+    "blurb": "Pre-Flop Raise\u2014percentage of hands a player raises preflop. Higher = more aggressive.",
+    "body": "PFR (Pre-Flop Raise) measures aggression preflop:\n\n\u2022 **PFR close to VPIP:** Aggressive, mostly raises\n\u2022 **Big gap (VPIP - PFR):** Passive, calls a lot\n\u2022 **Example 25/22:** Tight-aggressive\n\u2022 **Example 40/10:** Loose-passive fish\n\nThe VPIP/PFR gap reveals playing style. Small gap = aggressive reg; big gap = passive fish.",
+    "category": "core-concepts"
+  },
+  "rfi": {
+    "id": "rfi",
+    "name": "RFI",
+    "type": "term",
+    "blurb": "Raise First In\u2014percentage of times a player opens when first to act.",
+    "body": null,
+    "category": "core-concepts"
+  },
+  "aggression-factor": {
+    "id": "aggression-factor",
+    "name": "Aggression Factor (AF)",
+    "type": "term",
+    "blurb": "Ratio of bets+raises to calls\u2014measures how aggressive vs passive a player is.",
+    "body": "AF (Aggression Factor) = (Bets + Raises) / Calls.\n\n\u2022 **AF < 1.5:** Passive\n\u2022 **AF 1.5-3:** Balanced\n\u2022 **AF > 3:** Aggressive\n\nHigh AF means opponent bets and raises often\u2014their checks and calls are more meaningful. Low AF means they'll call you down; don't bluff.",
+    "category": "core-concepts"
+  },
+  "hud": {
+    "id": "hud",
+    "name": "HUD",
+    "type": "term",
+    "blurb": "Heads-Up Display\u2014software showing opponent statistics overlaid on the poker table.",
+    "body": "A HUD (Heads-Up Display) shows opponent statistics overlaid on the poker table.\n\nKey HUD stats:\n\u2022 VPIP/PFR: Tightness and aggression\n\u2022 Fold to C-bet: Bluff frequency guide\n\u2022 3-bet: How often they re-raise\n\nHUDs require sample sizes to be reliable. 100+ hands for preflop stats, 500+ for positional stats.",
+    "category": "core-concepts"
+  },
+  "nutted": {
+    "id": "nutted",
+    "name": "Nutted",
+    "type": "term",
+    "blurb": "Having a very strong hand, close to or at the nuts for the given board.",
+    "body": "Nutted means having a very strong hand, at or near the nuts.\n\nWhen nutted:\n\u2022 Bet for value across multiple streets\n\u2022 Size for maximum extraction\n\u2022 Consider slow-playing only if opponent will bluff\n\nNutted hands are rare\u2014maximize value when you have them. Don't get tricky and lose value.",
+    "category": "postflop"
+  },
+  "check-back": {
+    "id": "check-back",
+    "name": "Check Back",
+    "type": "term",
+    "blurb": "Checking when you have the option to bet\u2014often for pot control or trapping.",
+    "body": "Checking back means checking when you have the option to bet (in position).\n\nCheck back to:\n\u2022 Control pot with showdown value\n\u2022 Trap with monsters if opponent bluffs\n\u2022 Deny information about your hand\n\nNot every good hand needs to bet. Sometimes checking realizes value through pot control or inducing bluffs.",
+    "category": "postflop"
+  },
+  "blind-defense": {
+    "id": "blind-defense",
+    "name": "Blind Defense",
+    "type": "term",
+    "blurb": "Calling or 3-betting from the blinds vs a raise\u2014protecting your forced investment.",
+    "body": "Defending the blinds means calling or 3-betting vs a raise. Key considerations:\n\n\u2022 **Pot odds:** BB gets better odds than SB\n\u2022 **Position:** You'll be OOP post-flop\n\u2022 **Raiser's range:** Defend wider vs late position opens\n\nBalance defense frequency to prevent exploitation\u2014fold too much and opponents steal profitably; defend too wide and you leak in tough OOP spots.",
+    "category": "preflop"
+  },
+  "complete": {
+    "id": "complete",
+    "name": "Complete",
+    "type": "term",
+    "blurb": "Calling from the small blind to match the big blind, rather than raising or folding.",
+    "body": "Completing is calling from the SB to match the BB (putting in 0.5BB more).\n\nComplete when:\n\u2022 There are limpers (pot odds improve)\n\u2022 The BB is passive (won't raise)\n\u2022 Your hand has multiway value\n\nDon't complete with hands that should raise (value) or fold (trash). Completing is for hands that play well multiway but can't raise.",
+    "category": "preflop"
+  },
+  "fold-to-cbet": {
+    "id": "fold-to-cbet",
+    "name": "Fold to C-bet",
+    "type": "term",
+    "blurb": "How often a player folds to continuation bets\u2014high % means exploitable with bluffs.",
+    "body": "Fold to C-bet shows how often someone folds to continuation bets:\n\n\u2022 **>60%:** Fit-or-fold, c-bet them frequently\n\u2022 **40-60%:** Balanced, c-bet for value\n\u2022 **<40%:** Calling station, don't c-bet bluff\n\nThis stat directly tells you how much fold equity you have. Against high fold-to-cbet, bluff more; against low, value bet only.",
+    "category": "core-concepts"
+  },
+  "second-barrel": {
+    "id": "second-barrel",
+    "name": "Second Barrel",
+    "type": "term",
+    "blurb": "Another term for double barrel\u2014betting the turn after betting the flop.",
+    "body": "A second barrel is betting the turn after c-betting flop (same as double barrel).\n\nGood second barrel spots:\n\u2022 Turn completes draws you can represent\n\u2022 Opponent's flop calling range was weak\n\u2022 You picked up equity on the turn\n\nBad spots: brick turns against calling stations, when opponent showed strength on flop.",
+    "category": "postflop"
+  },
+  "river-bet": {
+    "id": "river-bet",
+    "name": "River Bet",
+    "type": "term",
+    "blurb": "A bet on the final street\u2014must be either pure value or pure bluff, rarely in between.",
+    "body": "River bets must be either value or bluff\u2014there are no cards left to improve.\n\nRiver decisions:\n\u2022 **Value:** What worse hands call?\n\u2022 **Bluff:** What better hands fold?\n\u2022 **Check:** Is my hand showdown value?\n\nRiver play is often where the biggest mistakes occur. Size your bets to achieve your goal.",
+    "category": "postflop"
+  },
+  "way-ahead-way-behind": {
+    "id": "way-ahead-way-behind",
+    "name": "Way Ahead/Way Behind",
+    "type": "term",
+    "blurb": "When you're either far ahead or far behind opponent's range\u2014often check for pot control.",
+    "body": "Way ahead/way behind (WAWB) is when you're either crushing or crushed with little in between.\n\nExample: AK on K-7-2 vs a tight range. You beat missed hands (which fold anyway) and lose to sets/two pair. There's little middle ground.\n\nWAWB strategy:\n\u2022 Checking has merit (betting folds out worse hands)\n\u2022 Let opponent bluff or make a mistake\n\u2022 Don't build a pot where you're only called by better\n\nRecognize WAWB spots to avoid turning winning hands into bluffs.",
+    "category": "postflop"
+  }
+}
