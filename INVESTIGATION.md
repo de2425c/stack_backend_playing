@@ -620,7 +620,27 @@ If the client never sends `ANIMATION_COMPLETE` (e.g., user backgrounded the app,
 
 ---
 
-## P1-7 — `process_session` blocks the loop for ~5 s on long sessions
+## P1-7 — `process_session` blocks the loop for ~5 s on long sessions  ✅ FIXED (`_fetch_hands` part)
+
+**Status:** `_fetch_hands` now uses the new `FirestoreClient.get_hands(...)`
+batch helper (added in P0-1) that fans out the reads via
+`asyncio.gather`, each landing on the default thread pool. A 100-hand
+session collapses from ~5 s of loop-blocking to roughly one Firestore
+RTT.
+
+The `PreflopGrader` calls inside `process_session` still run inline,
+and could be moved to `asyncio.to_thread` similarly. This is a
+follow-up that the original P1-7 finding acknowledged ("the grader is
+not [parallelised]"); leaving it out keeps this commit surgical. Will
+re-evaluate once we have telemetry showing the grader is a measurable
+bottleneck.
+
+**Verification:** in-memory test seats three hands, requests four
+(including one missing); result drops the missing entry and preserves
+the other three. Behavioural parity confirmed.
+
+**Original finding:**
+
 
 **Symptom (server):** After a long bot session ends, the server experiences a multi-second freeze in the background while `process_session` runs.
 
