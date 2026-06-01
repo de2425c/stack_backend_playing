@@ -291,7 +291,30 @@ Also: stop creating a fresh table when the requested-specific `table_id` doesn't
 
 ---
 
-## P0-4 — `objectWillChange` re-publish causes UI redraws on every backend message
+## P0-4 — `objectWillChange` re-publish causes UI redraws on every backend message  ✅ FIXED
+
+**Status:** FIXED — added a `.throttle(for: .milliseconds(16), scheduler:
+RunLoop.main, latest: true)` between `tableState.objectWillChange` and
+`wsManager.objectWillChange.send()`. Multiple property mutations within a
+single 16 ms display frame coalesce to one parent objectWillChange tick,
+which kills the redraw storm without breaking views that read
+`wsManager.tableState.X` (DuelLobbyView, SessionSummarySheet, PlayTab,
+…) — those views still get rebuilt, just once per frame instead of
+dozens of times per delta.
+
+I chose throttle over removing the forwarding because a clean removal
+would require changing every consumer site (~25 references) to bind to
+`tableState` directly. That's a larger refactor than the surgical fix
+calls for. The Combine pipeline preserves the existing observability
+contract; only the rate changes.
+
+**Verification:** `xcodebuild -project stack.xcodeproj -scheme stack
+-configuration Debug -destination 'generic/platform=iOS Simulator'
+build` → `** BUILD SUCCEEDED **`. Runtime profiling on-device is
+deferred to FIXES_SUMMARY.md (cannot run Instruments from here).
+
+**Original finding:**
+
 
 **Symptom (iOS):** Visible jank during gameplay; battery drain; UI hitching, particularly on older devices or during fast HU bot play.
 
