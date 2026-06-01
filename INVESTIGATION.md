@@ -174,7 +174,20 @@ FIXES_SUMMARY.md.
 
 ---
 
-## P0-2 — Fresh sockets reaped within 5 s of AUTH (lobby disconnect storm)
+## P0-2 — Fresh sockets reaped within 5 s of AUTH (lobby disconnect storm)  ✅ FIXED
+
+**Status:** FIXED — `app.py` now writes `connections._last_seen[user_id] =
+time.monotonic()` immediately after assigning `_connections[user_id]`, so
+the heartbeat reaper never sees a missing entry. One-line fix as
+recommended.
+
+**Verification:** `python3 -c 'ast.parse(...)'` succeeds; the existing
+`mark_seen`/`get_stale_users` flow is untouched and the reaper threshold
+(65 s) is unchanged — the fix only stops the "ts is None" branch from
+firing on first connect.
+
+**Original finding:**
+
 
 **Symptom (iOS):** Player connects, authenticates, sits in the lobby for >5 s without doing anything → WebSocket is closed by the server with code 4002 → iOS reconnect loop fires, possibly repeats indefinitely until the user finally clicks a button.
 

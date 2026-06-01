@@ -2540,6 +2540,11 @@ async def websocket_endpoint(websocket: WebSocket):
             except Exception:
                 pass
         connections._connections[user_id] = websocket
+        # Seed `_last_seen` immediately. Without this, the heartbeat reaper
+        # treats freshly-authed users (whose first inbound message hasn't yet
+        # called `mark_seen`) as stale and closes their socket within ~5s,
+        # producing a reconnect storm for anyone idling in the lobby.
+        connections._last_seen[user_id] = time.monotonic()
 
         # Cancel any pending grace period - player has reconnected
         was_in_grace_period = reconnect_mgr.cancel_grace_period(user_id)
