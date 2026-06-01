@@ -2,8 +2,14 @@
 Firestore client wrapper with in-memory fallback.
 
 Uses Firebase Admin SDK when available, falls back to in-memory storage for testing.
+
+All Firestore I/O is dispatched via ``asyncio.to_thread`` so the synchronous
+Firebase Admin SDK does not block the asyncio event loop. Every other table
+on the instance freezes if any wallet/hand/session/duel call runs inline
+on the loop, so the wrappers are mandatory rather than cosmetic.
 """
 
+import asyncio
 import logging
 from typing import Optional
 from datetime import datetime
@@ -67,7 +73,9 @@ class FirestoreClient:
 
         if self._db:
             logger.info(f"Writing hand {hand_log.hand_id} to Firestore")
-            self._db.collection("hands").document(hand_log.hand_id).set(data)
+            await asyncio.to_thread(
+                self._db.collection("hands").document(hand_log.hand_id).set, data
+            )
             logger.info(f"Hand {hand_log.hand_id} written successfully")
         else:
             logger.warning(f"Writing hand {hand_log.hand_id} to in-memory (Firestore not connected)")
@@ -85,9 +93,17 @@ class FirestoreClient:
 
         if self._db:
             logger.info(f"Writing {len(entries)} ledger entries to Firestore")
-            for entry in entries:
-                data = entry.to_dict()
-                self._db.collection("ledger").document(entry.entry_id).set(data)
+
+            # Single thread hop per entry would N-multiply the cost.
+            # One batched commit is one RTT no matter how many entries.
+            def _batch_write():
+                batch = self._db.batch()
+                for entry in entries:
+                    ref = self._db.collection("ledger").document(entry.entry_id)
+                    batch.set(ref, entry.to_dict())
+                batch.commit()
+
+            await asyncio.to_thread(_batch_write)
             logger.info(f"Ledger entries written successfully")
         else:
             logger.warning(f"Writing {len(entries)} ledger entries to in-memory (Firestore not connected)")
@@ -97,7 +113,10 @@ class FirestoreClient:
 
     def get_hand_log(self, hand_id: str) -> Optional[dict]:
         """
-        Retrieve hand log by ID.
+        Retrieve hand log by ID (SYNC — for use from non-async contexts).
+
+        Prefer :meth:`get_hand` from async code so the Firestore call lands
+        on the thread pool and the asyncio event loop keeps spinning.
 
         Args:
             hand_id: Unique hand identifier
@@ -116,7 +135,7 @@ class FirestoreClient:
 
     def get_ledger_entries(self, user_id: str, hand_id: Optional[str] = None) -> list[dict]:
         """
-        Retrieve ledger entries for a user.
+        Retrieve ledger entries for a user (SYNC — for debug endpoints).
 
         Args:
             user_id: User to look up
@@ -140,7 +159,7 @@ class FirestoreClient:
 
     def get_all_hand_logs(self) -> list[dict]:
         """
-        Retrieve all hand logs (for debugging).
+        Retrieve all hand logs (SYNC — for debug endpoints only).
 
         Returns:
             List of all hand log dicts
@@ -152,7 +171,7 @@ class FirestoreClient:
 
     def get_all_ledger_entries(self) -> list[dict]:
         """
-        Retrieve all ledger entries (for debugging).
+        Retrieve all ledger entries (SYNC — for debug endpoints only).
 
         Returns:
             List of all ledger entry dicts
@@ -185,7 +204,9 @@ class FirestoreClient:
             We convert to cents: dollars * 100 = cents
         """
         if self._db:
-            doc = self._db.collection("wallets").document(user_id).get()
+            doc = await asyncio.to_thread(
+                self._db.collection("wallets").document(user_id).get
+            )
             if doc.exists:
                 data = doc.to_dict()
                 dollars = data.get("dollars", 0)
@@ -216,32 +237,34 @@ class FirestoreClient:
 
         if self._db:
             from google.cloud.firestore import transactional
-            from google.cloud import firestore as firestore_module
 
-            transaction = self._db.transaction()
-            wallet_ref = self._db.collection("wallets").document(user_id)
+            def _deduct_blocking() -> int:
+                transaction = self._db.transaction()
+                wallet_ref = self._db.collection("wallets").document(user_id)
 
-            @transactional
-            def deduct_in_transaction(txn, ref):
-                doc = ref.get(transaction=txn)
-                if not doc.exists:
-                    raise ValueError(f"Wallet not found for user {user_id}")
+                @transactional
+                def deduct_in_transaction(txn, ref):
+                    doc = ref.get(transaction=txn)
+                    if not doc.exists:
+                        raise ValueError(f"Wallet not found for user {user_id}")
 
-                data = doc.to_dict()
-                current_dollars = data.get("dollars", 0)
-                current_cents = current_dollars * 100
+                    data = doc.to_dict()
+                    current_dollars = data.get("dollars", 0)
+                    current_cents = current_dollars * 100
 
-                if current_cents < cents:
-                    raise ValueError(
-                        f"Insufficient balance: {current_cents} cents < {cents} cents"
-                    )
+                    if current_cents < cents:
+                        raise ValueError(
+                            f"Insufficient balance: {current_cents} cents < {cents} cents"
+                        )
 
-                new_cents = current_cents - cents
-                new_dollars = new_cents // 100
-                txn.update(ref, {"dollars": new_dollars})
-                return new_cents
+                    new_cents = current_cents - cents
+                    new_dollars = new_cents // 100
+                    txn.update(ref, {"dollars": new_dollars})
+                    return new_cents
 
-            new_balance = deduct_in_transaction(transaction, wallet_ref)
+                return deduct_in_transaction(transaction, wallet_ref)
+
+            new_balance = await asyncio.to_thread(_deduct_blocking)
             logger.info(f"Deducted {cents} cents from {user_id}, new balance: {new_balance}")
             return new_balance
         else:
@@ -280,32 +303,34 @@ class FirestoreClient:
 
         if self._db:
             from google.cloud.firestore import transactional
-            from google.cloud import firestore as firestore_module
 
-            transaction = self._db.transaction()
-            wallet_ref = self._db.collection("wallets").document(user_id)
+            def _add_blocking() -> int:
+                transaction = self._db.transaction()
+                wallet_ref = self._db.collection("wallets").document(user_id)
 
-            @transactional
-            def add_in_transaction(txn, ref):
-                doc = ref.get(transaction=txn)
-                if doc.exists:
-                    data = doc.to_dict()
-                    current_dollars = data.get("dollars", 0)
-                else:
-                    current_dollars = 0
+                @transactional
+                def add_in_transaction(txn, ref):
+                    doc = ref.get(transaction=txn)
+                    if doc.exists:
+                        data = doc.to_dict()
+                        current_dollars = data.get("dollars", 0)
+                    else:
+                        current_dollars = 0
 
-                current_cents = current_dollars * 100
-                new_cents = current_cents + cents
-                new_dollars = new_cents // 100
+                    current_cents = current_dollars * 100
+                    new_cents = current_cents + cents
+                    new_dollars = new_cents // 100
 
-                if doc.exists:
-                    txn.update(ref, {"dollars": new_dollars})
-                else:
-                    txn.set(ref, {"dollars": new_dollars})
+                    if doc.exists:
+                        txn.update(ref, {"dollars": new_dollars})
+                    else:
+                        txn.set(ref, {"dollars": new_dollars})
 
-                return new_cents
+                    return new_cents
 
-            new_balance = add_in_transaction(transaction, wallet_ref)
+                return add_in_transaction(transaction, wallet_ref)
+
+            new_balance = await asyncio.to_thread(_add_blocking)
             logger.info(f"Added {cents} cents to {user_id}, new balance: {new_balance}")
             return new_balance
         else:
@@ -328,7 +353,9 @@ class FirestoreClient:
 
     async def get_hand(self, hand_id: str) -> Optional[dict]:
         """
-        Async wrapper for get_hand_log.
+        Async wrapper for get_hand_log — dispatches the blocking Firestore
+        ``.get()`` onto the default thread pool so the asyncio loop stays
+        free for other coroutines.
 
         Args:
             hand_id: Unique hand identifier
@@ -336,7 +363,36 @@ class FirestoreClient:
         Returns:
             Hand log data or None if not found
         """
+        if self._db:
+            doc = await asyncio.to_thread(
+                self._db.collection("hands").document(hand_id).get
+            )
+            return doc.to_dict() if doc.exists else None
+        # In-memory fallback — no I/O, run inline.
         return self.get_hand_log(hand_id)
+
+    async def get_hands(self, hand_ids: list[str]) -> list[Optional[dict]]:
+        """
+        Parallel batch read for many hands.
+
+        Each fetch hops onto the thread pool, so N reads share roughly one
+        Firestore RTT instead of being serialised on the event loop. Used by
+        :func:`session.processor._fetch_hands` to keep post-session analysis
+        from stalling the server.
+
+        Args:
+            hand_ids: List of hand IDs to fetch
+
+        Returns:
+            List of dicts (or None for hands that don't exist), in the same
+            order as ``hand_ids``.
+        """
+        if not hand_ids:
+            return []
+        if self._db:
+            tasks = [self.get_hand(hid) for hid in hand_ids]
+            return await asyncio.gather(*tasks)
+        return [self.get_hand_log(hid) for hid in hand_ids]
 
     async def write_session(self, session_id: str, session_data: dict) -> None:
         """
@@ -348,7 +404,10 @@ class FirestoreClient:
         """
         if self._db:
             logger.info(f"Writing session {session_id} to Firestore")
-            self._db.collection("sessions").document(session_id).set(session_data)
+            await asyncio.to_thread(
+                self._db.collection("sessions").document(session_id).set,
+                session_data,
+            )
             logger.info(f"Session {session_id} written successfully")
         else:
             logger.warning(f"Writing session {session_id} to in-memory (Firestore not connected)")
@@ -371,9 +430,13 @@ class FirestoreClient:
 
         if self._db:
             logger.info(f"Merging analysis into bot_sessions/{client_session_id}")
-            self._db.collection("bot_sessions").document(client_session_id).set(
-                partial_data, merge=True
-            )
+
+            def _do_merge():
+                self._db.collection("bot_sessions").document(client_session_id).set(
+                    partial_data, merge=True
+                )
+
+            await asyncio.to_thread(_do_merge)
             logger.info(f"bot_sessions/{client_session_id} merged successfully")
         else:
             logger.warning(
@@ -396,7 +459,9 @@ class FirestoreClient:
             Session data or None if not found
         """
         if self._db:
-            doc = self._db.collection("sessions").document(session_id).get()
+            doc = await asyncio.to_thread(
+                self._db.collection("sessions").document(session_id).get
+            )
             return doc.to_dict() if doc.exists else None
         else:
             for s in self._in_memory.get("sessions", []):
@@ -417,8 +482,11 @@ class FirestoreClient:
         """
         if self._db:
             # Simple query without ordering (avoids composite index requirement)
-            query = self._db.collection("sessions").where("user_id", "==", user_id)
-            sessions = [doc.to_dict() for doc in query.stream()]
+            def _blocking_query():
+                query = self._db.collection("sessions").where("user_id", "==", user_id)
+                return [doc.to_dict() for doc in query.stream()]
+
+            sessions = await asyncio.to_thread(_blocking_query)
             # Sort in Python by ended_at descending
             sessions.sort(key=lambda x: x.get("ended_at", ""), reverse=True)
             return sessions[:limit]
@@ -446,7 +514,9 @@ class FirestoreClient:
 
         if self._db:
             logger.info(f"Writing duel {duel_record.match_id} to Firestore")
-            self._db.collection("duels").document(duel_record.match_id).set(data)
+            await asyncio.to_thread(
+                self._db.collection("duels").document(duel_record.match_id).set, data
+            )
             logger.info(f"Duel {duel_record.match_id} written successfully")
         else:
             logger.warning(f"Writing duel {duel_record.match_id} to in-memory (Firestore not connected)")
@@ -466,8 +536,13 @@ class FirestoreClient:
             List of duel dicts, most recent first
         """
         if self._db:
-            query = self._db.collection("duels").where("participant_ids", "array_contains", user_id)
-            duels = [doc.to_dict() for doc in query.stream()]
+            def _blocking_query():
+                query = self._db.collection("duels").where(
+                    "participant_ids", "array_contains", user_id
+                )
+                return [doc.to_dict() for doc in query.stream()]
+
+            duels = await asyncio.to_thread(_blocking_query)
             duels.sort(key=lambda x: x.get("ended_at", ""), reverse=True)
             return duels[:limit]
         else:
@@ -493,10 +568,32 @@ class FirestoreClient:
             Rating dict or None if not found
         """
         if self._db:
-            doc = self._db.collection("duel_ratings").document(user_id).get()
+            doc = await asyncio.to_thread(
+                self._db.collection("duel_ratings").document(user_id).get
+            )
             return doc.to_dict() if doc.exists else None
         else:
             return self._in_memory.get("duel_ratings", {}).get(user_id)
+
+    async def get_duel_ratings(self, user_ids: list[str]) -> dict[str, Optional[dict]]:
+        """
+        Parallel batch read for many duel ratings.
+
+        Used by the bot persona pool so picking an opponent doesn't serialise
+        70 Firestore reads on the event loop.
+
+        Args:
+            user_ids: List of user IDs to look up
+
+        Returns:
+            Mapping user_id → rating dict (or None when no rating exists).
+        """
+        if not user_ids:
+            return {}
+        if self._db:
+            results = await asyncio.gather(*(self.get_duel_rating(uid) for uid in user_ids))
+            return dict(zip(user_ids, results))
+        return {uid: self._in_memory.get("duel_ratings", {}).get(uid) for uid in user_ids}
 
     async def update_duel_rating(
         self,
@@ -526,7 +623,9 @@ class FirestoreClient:
         }
         if self._db:
             logger.info(f"Updating duel rating for {user_id}: rating={rating:.0f}, rd={rd:.0f}")
-            self._db.collection("duel_ratings").document(user_id).set(data)
+            await asyncio.to_thread(
+                self._db.collection("duel_ratings").document(user_id).set, data
+            )
         else:
             if "duel_ratings" not in self._in_memory:
                 self._in_memory["duel_ratings"] = {}

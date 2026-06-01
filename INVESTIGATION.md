@@ -117,7 +117,25 @@ Severity ranks: **P0** (immediate user-visible bug, frequent) · **P1** (signifi
 
 ---
 
-## P0-1 — Sync Firestore calls block the entire event loop
+## P0-1 — Sync Firestore calls block the entire event loop  ✅ FIXED
+
+**Status:** FIXED in commit on `main`. All async methods on `FirestoreClient`
+now dispatch the blocking Firebase Admin SDK call onto the asyncio default
+thread pool via `asyncio.to_thread(...)`. Added batch helpers
+`get_hands(hand_ids)` and `get_duel_ratings(user_ids)` that fan out via
+`asyncio.gather` so callers in P1-7 / P1-8 can replace serial loops with
+one round-trip's worth of latency. `write_ledger_entries` switched to a
+Firestore `batch().commit()` for one network hop instead of N. The sync
+methods `get_hand_log`/`get_ledger_entries`/`get_all_*` are kept (debug
+endpoints call them) and clearly labelled SYNC in their docstring.
+
+**Verification:** Module imports and parses; every method previously
+declared `async` is still `async`. Behavioural verification (real
+Firestore RTT measurement) requires deploying to the server — see
+FIXES_SUMMARY.md.
+
+**Original finding:**
+
 
 **Symptom (server):** All users / all tables briefly freeze every time anything touches Firestore — joins, leaves, hand_end rebuys, duel match start, duel match end, top-ups, bot persona selection.
 
