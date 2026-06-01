@@ -540,7 +540,25 @@ Combined with **P0-1**, snapshot-building can include serialising hole cards + s
 
 ---
 
-## P1-5 — `_check_and_process_rebuys` sequentialises wallet ops on hand-end
+## P1-5 — `_check_and_process_rebuys` sequentialises wallet ops on hand-end  ✅ FIXED
+
+**Status:** FIXED — restructured to:
+1. Collect rebuy candidates in one pass over the seats.
+2. `asyncio.gather` over `try_rebuy(...)` for all candidates so their
+   Firestore transactions run concurrently on the thread pool.
+3. For users whose rebuy returned None, `asyncio.gather` over
+   `get_user_balance(...)` for OUT_OF_CHIPS notifications.
+4. Sequential broadcasts after both rounds.
+
+Used `return_exceptions=True` so a single user's Firestore failure
+doesn't take down the rebuy round for the rest of the table.
+
+**Verification:** parses + imports cleanly. Behavioural contract
+unchanged: same set of REBUY / OUT_OF_CHIPS messages get sent in the
+same order; only the I/O wait collapses.
+
+**Original finding:**
+
 
 **Symptom (server + all users at the table):** Visible 200–600 ms freeze after every hand at a 6-max bot table when human stack drops below 100bb.
 

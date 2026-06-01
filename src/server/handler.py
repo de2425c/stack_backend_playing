@@ -734,57 +734,89 @@ class MessageHandler:
             print(f"[DUEL] Error starting next hand: {e}", flush=True)
 
     async def _check_and_process_rebuys(self, table_id: str) -> None:
-        """Check for bust human players and attempt auto-rebuy."""
+        """Check for bust human players and attempt auto-rebuy.
+
+        Each candidate's rebuy involves a Firestore get_user_balance +
+        deduct_balance (now properly yielding the event loop via P0-1).
+        Running them sequentially produced a visible per-hand-end stall
+        scaling with the number of bust players. asyncio.gather over the
+        list lets all rebuys share one Firestore RTT.
+        """
         runner = self._manager._tables.get(table_id)
         if not runner:
             return
 
+        rebuy_target = 100 * runner._config.big_blind_cents
+
+        # Gather candidates up-front while the engine state is still
+        # internally consistent.
+        candidates: list[tuple[int, str, int]] = []  # (seat_idx, user_id, chips_before)
         for seat_idx, seat_state in enumerate(runner._engine._seats):
             if seat_state is None:
                 continue
-
             user_id = seat_state.player.user_id
-
-            # Skip bots
             if user_id.startswith(("bot_", "user_bot_")):
                 continue
-
-            # Skip if auto top-up is disabled for this player
             if not seat_state.auto_topup_enabled:
                 print(f"[REBUY_CHECK] seat {seat_idx} user {user_id[:20]}... skipped (auto top-up disabled)")
                 continue
-
             print(f"[REBUY_CHECK] seat {seat_idx} user {user_id[:20]}... chips={seat_state.chips}")
-
-            # Trigger rebuy when stack drops below 100bb of this table's big blind.
-            rebuy_target = 100 * runner._config.big_blind_cents
             if seat_state.chips < rebuy_target:
-                result = await self._manager.try_rebuy(user_id, table_id, seat_idx)
-                if result:
-                    rebuy_amount, new_stack = result
-                    rebuy_msg = {
-                        "type": "REBUY",
-                        "seat": seat_idx,
-                        "amount": {"amount": rebuy_amount},
-                        "new_stack": {"amount": new_stack},
-                    }
-                    await self._connections.broadcast_to_table(table_id, rebuy_msg)
-                    print(f"[REBUY] Sent for seat {seat_idx}: +{rebuy_amount} cents")
-                else:
-                    # Can't afford rebuy - send OUT_OF_CHIPS
-                    balance = 0
-                    if self._manager._firestore:
-                        try:
-                            balance = await self._manager._firestore.get_user_balance(user_id)
-                        except Exception:
-                            pass
-                    out_msg = {
-                        "type": "OUT_OF_CHIPS",
-                        "balance_cents": balance,
-                        "rebuy_cost_cents": max(rebuy_target - seat_state.chips, 0),
-                    }
-                    await self._connections.send_to_user(user_id, out_msg)
-                    print(f"[OUT_OF_CHIPS] Sent to {user_id}")
+                candidates.append((seat_idx, user_id, seat_state.chips))
+
+        if not candidates:
+            return
+
+        # Issue all try_rebuy calls concurrently. Each runs a Firestore
+        # transaction; the gather lets them overlap on the thread pool.
+        results = await asyncio.gather(
+            *(self._manager.try_rebuy(uid, table_id, sidx) for sidx, uid, _ in candidates),
+            return_exceptions=True,
+        )
+
+        # Collect users whose rebuy failed (need balance lookup for OUT_OF_CHIPS).
+        oo_candidates: list[tuple[int, str, int]] = []
+
+        for (seat_idx, user_id, chips_before), result in zip(candidates, results):
+            if isinstance(result, Exception):
+                print(f"[REBUY] Exception for {user_id}: {result}", flush=True)
+                continue
+            if result:
+                rebuy_amount, new_stack = result
+                rebuy_msg = {
+                    "type": "REBUY",
+                    "seat": seat_idx,
+                    "amount": {"amount": rebuy_amount},
+                    "new_stack": {"amount": new_stack},
+                }
+                await self._connections.broadcast_to_table(table_id, rebuy_msg)
+                print(f"[REBUY] Sent for seat {seat_idx}: +{rebuy_amount} cents")
+            else:
+                oo_candidates.append((seat_idx, user_id, chips_before))
+
+        if not oo_candidates:
+            return
+
+        # Parallel balance reads for the OUT_OF_CHIPS notifications.
+        balances: list = []
+        if self._manager._firestore:
+            balances = await asyncio.gather(
+                *(self._manager._firestore.get_user_balance(uid) for _, uid, _ in oo_candidates),
+                return_exceptions=True,
+            )
+        else:
+            balances = [0] * len(oo_candidates)
+
+        for (seat_idx, user_id, chips_before), balance in zip(oo_candidates, balances):
+            if isinstance(balance, Exception):
+                balance = 0
+            out_msg = {
+                "type": "OUT_OF_CHIPS",
+                "balance_cents": balance,
+                "rebuy_cost_cents": max(rebuy_target - chips_before, 0),
+            }
+            await self._connections.send_to_user(user_id, out_msg)
+            print(f"[OUT_OF_CHIPS] Sent to {user_id}")
 
     async def _topup_bots_and_broadcast(self, table_id: str) -> None:
         """Top up busted bot seats to 100bb in cash mode, broadcast REBUY for each.
