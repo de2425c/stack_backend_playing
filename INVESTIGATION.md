@@ -405,7 +405,30 @@ The seed is deterministic, so the output never changes. **There is no reason to 
 
 ---
 
-## P1-2 — iOS WS receive loop runs entirely on the MainActor
+## P1-2 — iOS WS receive loop runs entirely on the MainActor  ✅ FIXED (heavy decodes off-main)
+
+**Status:** FIXED for the parts that matter — every JSON decode now hops
+off the MainActor:
+- The per-message `MessageTypeWrapper` decode in `handleMessage` uses a
+  new `Self.decodeOffMain<T>(_:from:)` helper that runs the decode on a
+  detached background task at `.userInitiated` priority, then returns
+  the typed value.
+- The two heavy decodes — `TableSnapshotMessage` (full seats array +
+  hole cards) and `StateDeltaMessage` (events array carrying showdown
+  hands, board cards, winners) — use the same helper.
+
+The receive loop itself stays on the MainActor — `URLSessionWebSocketTask.receive()`
+is async and properly releases the actor during suspension, so the cost
+was always the decode + mutation work afterwards. Mutations (e.g.,
+`tableState.applyEvents(...)`) must stay on the MainActor because
+`PokerTableState` is `@MainActor`; only the JSON parsing moved off.
+
+**Verification:** `xcodebuild` → `** BUILD SUCCEEDED **`. Behavioural
+parity preserved — the message type wrapper is identical, the typed
+decode result is identical, only the thread the decode runs on changed.
+
+**Original finding:**
+
 
 **Symptom (iOS):** UI hitches when STATE_DELTA / TABLE_SNAPSHOT arrive — especially on the first hand of a 6-max session where the snapshot carries 6 seats × hole cards × pots, or during all-in runouts.
 
