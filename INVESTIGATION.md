@@ -1295,7 +1295,22 @@ single bool write so race semantics are benign under Python's GIL.
 
 ---
 
-## P1-13 — Bot subprocesses leak SessionTracker entries
+## P1-13 — Bot subprocesses leak SessionTracker entries  ✅ FIXED
+
+**Status:** FIXED — gate `start_session` in `handler.complete_join` on
+`not user_id.startswith(("bot_", "user_bot_"))`. Bot subprocesses go
+through the same JOIN_POOL/JOIN_TABLE codepath as humans but never
+send LEAVE_TABLE, so before the fix every bot subprocess leaked an
+ActiveSession entry until process restart.
+
+Downstream impact: `SessionTracker.add_hand` is no-op when no session
+exists (tracker.py:138), so bots that play hands without a session
+just skip the `add_hand` call silently. Sessions are only used to
+build the post-session analysis for humans, so the bot-skip is
+correct semantically too.
+
+**Original finding:**
+
 
 **Symptom:** SessionTracker `_sessions` dict grows by one entry per
 bot subprocess that joins a table, never released. Slow memory growth.

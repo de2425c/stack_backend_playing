@@ -152,8 +152,13 @@ class MessageHandler:
 
         Call this AFTER sending the snapshot response to avoid race conditions.
         """
-        # Start session tracking
-        if self._session_tracker:
+        # Start session tracking — humans only. Bot subprocesses route
+        # through the same JOIN_POOL / JOIN_TABLE codepath but never send
+        # LEAVE_TABLE (the orphan-table flow kills the subprocess), so a
+        # start_session here would leak the session entry until process
+        # restart.
+        is_bot_subprocess = user_id.startswith(("bot_", "user_bot_"))
+        if self._session_tracker and not is_bot_subprocess:
             self._session_tracker.start_session(
                 user_id=user_id,
                 table_id=table_id,
