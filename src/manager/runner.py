@@ -117,16 +117,21 @@ class TableRunner:
                 pass
 
     async def _run(self) -> None:
-        """Main processing loop - runs commands serially."""
-        while self._running:
+        """Main processing loop - runs commands serially.
+
+        Uses a bare ``queue.get()`` instead of polling with a 100 ms
+        ``wait_for``. The polling added 0-100 ms of artificial latency
+        to every command; the underlying ``asyncio.Queue.get()``
+        already integrates with ``Task.cancel()`` so the cancellation
+        path in ``stop()`` still works correctly.
+        """
+        while True:
             try:
-                command = await asyncio.wait_for(
-                    self._queue.get(),
-                    timeout=0.1
-                )
+                command = await self._queue.get()
+            except asyncio.CancelledError:
+                break
+            try:
                 await self._process(command)
-            except asyncio.TimeoutError:
-                continue
             except asyncio.CancelledError:
                 break
 

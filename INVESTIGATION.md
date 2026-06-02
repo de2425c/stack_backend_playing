@@ -843,7 +843,21 @@ Apply this pattern everywhere `applyEvents` does per-index mutations (8 sites in
 
 ---
 
-## P2-3 — TableRunner queue polls every 100 ms, adding artificial latency
+## P2-3 — TableRunner queue polls every 100 ms, adding artificial latency  ✅ FIXED
+
+**Status:** FIXED — `_run` now uses bare `await self._queue.get()` and
+handles `asyncio.CancelledError` to break cleanly. Removed the
+`_running` flag's polling role (`stop()` still calls `_task.cancel()`
+which now drives the loop exit). Up to 100 ms of artificial latency
+per command is eliminated.
+
+**Verification:** in-memory test starts a runner, submits a
+StartHandCommand (which raises since no players are seated), and
+awaits `runner.stop()`. Stop completes cleanly: confirms the
+cancellation path still works without the polling timeout.
+
+**Original finding:**
+
 
 **Symptom (server):** Every command (action, snapshot, join) adds up to 100 ms of artificial latency at the runner queue.
 
