@@ -957,7 +957,20 @@ If the join command raises after `create_table` succeeds, the new table stays in
 
 ---
 
-## P2-6 — Stuck `isRunoutAnimating = true` on backgrounding mid-runout
+## P2-6 — Stuck `isRunoutAnimating = true` on backgrounding mid-runout  ✅ FIXED
+
+**Status:** FIXED — added a `defer { if tableState.isRunoutAnimating
+{ tableState.isRunoutAnimating = false } }` block at the top of the
+runout `.task(id:)` body. Every exit path now releases the flag:
+normal completion (after the queue drains), task cancellation
+(view dismissed / backgrounded), or `hand_started` clearing the queue
+under us.
+
+**Verification:** Build succeeded. The defer is a single trailing
+cleanup; no semantics change to the success path.
+
+**Original finding:**
+
 
 **Symptom (iOS):** Background → foreground → no winner animation, no next hand, no progress. User must reconnect or leave table.
 
