@@ -395,6 +395,19 @@ class StateDeltaMessage(BaseModel):
     seq: int = Field(..., ge=0, description="Monotonic sequence number")
     events: list[GameEvent] = Field(..., description="Ordered list of game events")
     actor_seat: Optional[int] = Field(None, description="Seat index of next actor, or None if no action needed")
+    # Carries the actor's authoritative deadline so opponents (clients who
+    # are NOT the actor and therefore do not receive an ACTION_REQUEST)
+    # can render an accurate countdown ring. Without these the iOS ring
+    # had to assume a fixed 60s window — wrong for bot turns (5s preflop
+    # /flop) and stale on reconnect.
+    actor_expires_at_ms: Optional[int] = Field(
+        None,
+        description="Unix ms when the current actor's deadline expires"
+    )
+    actor_window_seconds: Optional[int] = Field(
+        None,
+        description="Original deadline window in seconds (60 human, 5 bot early-street)"
+    )
 
 
 # =============================================================================

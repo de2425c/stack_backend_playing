@@ -466,6 +466,39 @@ class MessageHandler:
             seq = 0
             actor_seat = None
 
+        # Compute the actor's deadline + original window so opponent
+        # clients can render an accurate timer ring. Without these the
+        # iOS ring assumed a fixed 60s window — wrong for bot turns
+        # (5s preflop/flop). Source: engine.get_action_request matches
+        # this calculation. Done out here so a single get_actor_seat
+        # call suffices regardless of which user is the actor (or if
+        # the actor is a bot subprocess that doesn't get an
+        # ACTION_REQUEST).
+        actor_expires_at_ms: Optional[int] = None
+        actor_window_seconds: Optional[int] = None
+        if actor_seat is not None and not is_hand_end:
+            runner = self._manager._tables.get(table_id)
+            if runner and runner._engine._status.value == "running":
+                cfg = runner._config
+                # Map seat → user_id to detect bot for the early-street window.
+                actor_user_id = None
+                for uid, sidx in runner._user_seats.items():
+                    if sidx == actor_seat:
+                        actor_user_id = uid
+                        break
+                is_bot_actor = bool(
+                    actor_user_id
+                    and actor_user_id.startswith(("bot_", "user_bot_"))
+                )
+                street_obj = runner._engine._get_current_street()
+                street_name = street_obj.value if hasattr(street_obj, "value") else str(street_obj)
+                is_early_street = street_name in ("preflop", "flop")
+                if is_bot_actor and is_early_street:
+                    actor_window_seconds = cfg.bot_early_street_timeout_seconds
+                else:
+                    actor_window_seconds = cfg.action_timeout_seconds
+                actor_expires_at_ms = int(time.time() * 1000) + actor_window_seconds * 1000
+
         # Build STATE_DELTA
         delta = StateDeltaMessage(
             table_id=table_id,
@@ -473,6 +506,8 @@ class MessageHandler:
             seq=seq,
             events=events,
             actor_seat=actor_seat,
+            actor_expires_at_ms=actor_expires_at_ms,
+            actor_window_seconds=actor_window_seconds,
         )
         delta_dict = delta.model_dump(mode="json")
 

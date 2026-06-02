@@ -31,8 +31,15 @@ class ActionTimerService:
     and triggers auto-actions (fold if facing bet, check otherwise).
     """
 
-    def __init__(self, tick_interval_ms: int = 250):
+    def __init__(self, tick_interval_ms: int = 250, grace_ms: int = 1500):
         self._tick_interval = tick_interval_ms / 1000
+        # Server-side grace window applied to BOTH is_expired() (action
+        # arrival check) and the tick auto-fold. The client's ring drains
+        # to zero at the original expires_at_ms; the grace cushion only
+        # exists server-side so a borderline-fast click on a slow
+        # network still counts as in-time. See engine/config.py
+        # action_timeout_grace_ms.
+        self._grace_ms = grace_ms
         self._pending: dict[str, PendingAction] = {}  # user_id -> pending
         self._running = False
         self._task: Optional[asyncio.Task] = None
@@ -90,11 +97,11 @@ class ActionTimerService:
         self._pending.pop(user_id, None)
 
     def is_expired(self, user_id: str) -> bool:
-        """Check if user's deadline has passed."""
+        """Check if user's deadline has passed (includes grace window)."""
         pending = self._pending.get(user_id)
         if not pending:
             return False
-        return int(time.time() * 1000) > pending.deadline_ms
+        return int(time.time() * 1000) > pending.deadline_ms + self._grace_ms
 
     def get_pending(self, user_id: str) -> Optional[PendingAction]:
         """Get pending action for a user."""
@@ -110,12 +117,17 @@ class ActionTimerService:
                 break
 
     async def _tick(self) -> None:
-        """Check all pending actions for expiration."""
+        """Check all pending actions for expiration (includes grace window).
+
+        Same `deadline_ms + grace_ms` cushion as `is_expired`: avoids the
+        timer service auto-folding a user whose action is in-flight on a
+        slow network.
+        """
         now_ms = int(time.time() * 1000)
         expired = []
 
         for user_id, pending in list(self._pending.items()):
-            if now_ms > pending.deadline_ms:
+            if now_ms > pending.deadline_ms + self._grace_ms:
                 expired.append(pending)
 
         for pending in expired:

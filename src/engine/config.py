@@ -21,3 +21,11 @@ class TableConfig:
     max_buy_in_cents: int = 40000  # 200bb
     action_timeout_seconds: int = 60
     bot_early_street_timeout_seconds: int = 5  # Bot timeout on preflop/flop
+    # Grace window applied SERVER-SIDE when validating an incoming action
+    # (handler.handle_action) and when the timer service auto-fires a
+    # timeout (timer.is_expired). Clients still see the original
+    # `expires_at_ms` so the ring drains to zero on screen, but a user
+    # who tapped fold at deadline-30ms and was delayed by network won't
+    # be auto-folded if they land within the grace window. Real poker
+    # rooms call this the "time bank cushion."
+    action_timeout_grace_ms: int = 1500

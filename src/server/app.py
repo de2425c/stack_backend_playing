@@ -476,7 +476,9 @@ async def lifespan(app: FastAPI):
     manager = TableManager(hand_logger, firestore)
     connections = ConnectionManager()
     auth = AuthService()
-    timer = ActionTimerService()
+    # Grace window of 1.5s on both inbound action validation and the
+    # auto-fold tick. See engine/config.py action_timeout_grace_ms.
+    timer = ActionTimerService(grace_ms=1500)
     reconnect_mgr = ReconnectManager(grace_period_seconds=60.0)
     handler = MessageHandler(manager, connections, auth, timer, session_tracker)
 
