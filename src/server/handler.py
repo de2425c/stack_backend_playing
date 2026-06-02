@@ -50,6 +50,11 @@ class MessageHandler:
         self._processed_actions_max_age = 60.0  # Clear entries older than 60s
         # Track tables waiting for animation completion before next hand
         self._animation_complete_events: dict[str, asyncio.Event] = {}  # table_id -> Event
+        # Pending REBUY messages queued at hand_end (auto-rebuy + bot
+        # top-ups). Broadcast on the NEXT hand_start so opponent chip
+        # counts don't visibly jump from $0 in the middle of the
+        # winner celebration (P0-5).
+        self._pending_rebuy_msgs: dict[str, list[dict]] = {}
 
     async def handle_auth(self, user_id: str, token: str, protocol_version: int) -> dict:
         """Handle AUTH message. Returns response dict.
@@ -275,6 +280,24 @@ class MessageHandler:
                         if seat and seat.player and seat.player.user_id == user_id:
                             seat_index = i
                             break
+
+            # Flush any pending REBUY messages queued at the prior hand_end
+            # before responding (P0-5 follow-up). Otherwise the user could
+            # leave the table during the celebration window of a hand they
+            # auto-rebought into and their session totals would miss the
+            # rebuy — profit calculation would be wrong.
+            if table_id:
+                pending = self._pending_rebuy_msgs.pop(table_id, [])
+                for rebuy_msg in pending:
+                    await self._connections.send_to_user(user_id, rebuy_msg)
+                    # Re-queue messages for any other players left at the
+                    # table — but only ones the leaver wasn't the seat of.
+                    # The leaver's auto-rebuy never publishes a REBUY to
+                    # other players (REBUY is broadcast, not unicast, and
+                    # other players will get the seat-empty SEAT_UPDATE
+                    # right after this anyway).
+                    if rebuy_msg.get("seat") != seat_index:
+                        self._pending_rebuy_msgs.setdefault(table_id, []).append(rebuy_msg)
 
             chips = await self._manager.remove_player(user_id)
             self._connections.leave_table(user_id)
@@ -514,8 +537,18 @@ class MessageHandler:
         event_types = [e.get("event_type") if isinstance(e, dict) else getattr(e, "event_type", "?") for e in events]
         print(f"[BROADCAST] table={table_id} events={event_types} is_hand_end={is_hand_end}", flush=True)
 
-        # If hand just started, check for applied top-ups and broadcast REBUY messages
+        # If hand just started, check for applied top-ups and broadcast
+        # REBUY messages — both the in-hand pending top-ups and any
+        # rebuys queued at the prior hand's end (P0-5: queued instead
+        # of broadcast mid-celebration). Order: queued first (their
+        # chips visually arrive WITH the new deal), then this hand's
+        # applied top-ups (typically empty unless someone tapped Top Up
+        # between hands).
         if is_hand_start:
+            queued = self._pending_rebuy_msgs.pop(table_id, [])
+            for rebuy_msg in queued:
+                await self._connections.broadcast_to_table(table_id, rebuy_msg)
+                print(f"[REBUY] Sent queued (deferred from hand_end): {rebuy_msg}")
             runner = self._manager._tables.get(table_id)
             if runner:
                 applied_topups = runner._engine.get_and_clear_applied_topups()
@@ -843,8 +876,11 @@ class MessageHandler:
                     "amount": {"amount": rebuy_amount},
                     "new_stack": {"amount": new_stack},
                 }
-                await self._connections.broadcast_to_table(table_id, rebuy_msg)
-                print(f"[REBUY] Sent for seat {seat_idx}: +{rebuy_amount} cents")
+                # Queue for the next hand_start broadcast (P0-5). Sending
+                # this mid-celebration made the player's chip count
+                # visibly jump while the winner banner was still showing.
+                self._pending_rebuy_msgs.setdefault(table_id, []).append(rebuy_msg)
+                print(f"[REBUY] Queued for next hand_start: seat {seat_idx}: +{rebuy_amount} cents")
             else:
                 oo_candidates.append((seat_idx, user_id, chips_before))
 
@@ -890,8 +926,11 @@ class MessageHandler:
                 "amount": {"amount": amount},
                 "new_stack": {"amount": new_stack},
             }
-            await self._connections.broadcast_to_table(table_id, rebuy_msg)
-            print(f"[BOT_REBUY] seat {seat_idx}: +{amount} cents (new stack {new_stack})")
+            # Queue for the next hand_start broadcast (P0-5). Bot
+            # rebuys mid-celebration made busted bots visibly refill
+            # from $0 while the winner banner was on screen.
+            self._pending_rebuy_msgs.setdefault(table_id, []).append(rebuy_msg)
+            print(f"[BOT_REBUY] queued for next hand_start: seat {seat_idx}: +{amount} cents (new stack {new_stack})")
 
     async def handle_timeout(self, pending: "PendingAction") -> None:
         """Handle action timeout - apply auto-action."""
