@@ -4,7 +4,9 @@ Real-time poker game server using WebSockets, PokerKit engine, and Firebase auth
 
 ## Quick Start
 
-All development happens on this server (`162.222.177.28`). See **Common Tasks → Restart Server** below for the full restart command with policy env vars — don't use a bare `uvicorn` invocation, it will boot with stale defaults.
+**This repo (`~/Projects/stack_backend_playing` on the Mac) is the definitive copy of the backend.** It is the source of truth; the server at `162.222.177.28:8000` is a deployment target that pulls from GitHub (`de2425c/stack_backend_playing`). Develop here, push to `main`, then deploy via **Common Tasks → Deploy to Server**. Don't edit code directly on the server — those edits will be overwritten on the next pull.
+
+See **Common Tasks → Restart Server** below for the full restart command with policy env vars — don't use a bare `uvicorn` invocation, it will boot with stale defaults.
 
 **Check logs:** `tail -f /tmp/poker_dev.log` (8000) or `/tmp/poker.log` (8001)
 **Kill server:** `fuser -k 8000/tcp` (or `8001/tcp`)
@@ -112,7 +114,15 @@ cd ~/poker_backend && source venv/bin/activate && \
 Run `ls -lt /home/de2425/*.db` first; some files (e.g. `hu15bb_policy.db`, `policy_iter200M.db`) are 0-byte placeholders and should not be used.
 
 ### Where code lives
-All development happens directly on this server (`162.222.177.28`). There is no local/server sync — edit files in place. The old Mac checkout at `/Users/davideyal/Projects/stack_poker/` is stale and should not be rsynced from.
+This Mac repo (`~/Projects/stack_backend_playing`, remote `de2425c/stack_backend_playing`) is the **definitive copy**. Edit and commit here, then push to `main`. The server checkout at `de2425@162.222.177.28:~/poker_backend` tracks the same repo and is updated by pulling — see **Deploy to Server**. (Note: the `backend/`/`poker_backend/` folders inside the `stack_poker` iOS monorepo are unrelated copies — don't develop the backend there.)
+
+### Deploy to Server
+```bash
+ssh de2425@162.222.177.28
+cd ~/poker_backend
+git fetch origin && git reset --hard origin/main   # server is deploy-only; local edits are discarded
+# then restart — see Restart Server below
+```
 
 ### Debug Timeouts
 Look for these log patterns:
