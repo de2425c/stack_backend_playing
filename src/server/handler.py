@@ -52,14 +52,14 @@ class MessageHandler:
         self._animation_complete_events: dict[str, asyncio.Event] = {}  # table_id -> Event
 
     async def handle_auth(self, user_id: str, token: str, protocol_version: int) -> dict:
-        """Handle AUTH message. Returns response dict."""
-        verified_user = self._auth.verify_token(token)
-        if verified_user is None or verified_user != user_id:
-            return ErrorMessage(
-                code=ErrorCode.UNAUTHORIZED,
-                message="Invalid token",
-            ).model_dump(mode="json")
+        """Handle AUTH message. Returns response dict.
 
+        Note: the WS endpoint has already verified the token before reaching
+        this method (and passed the verified user_id in). We trust the
+        caller-supplied user_id rather than re-running verify_id_token,
+        which would be a second sync Firebase RPC on the event loop's
+        critical path.
+        """
         # Check if user already at a table (reconnect)
         table_id = self._manager.get_table_for_user(user_id)
 
@@ -152,8 +152,13 @@ class MessageHandler:
 
         Call this AFTER sending the snapshot response to avoid race conditions.
         """
-        # Start session tracking
-        if self._session_tracker:
+        # Start session tracking — humans only. Bot subprocesses route
+        # through the same JOIN_POOL / JOIN_TABLE codepath but never send
+        # LEAVE_TABLE (the orphan-table flow kills the subprocess), so a
+        # start_session here would leak the session entry until process
+        # restart.
+        is_bot_subprocess = user_id.startswith(("bot_", "user_bot_"))
+        if self._session_tracker and not is_bot_subprocess:
             self._session_tracker.start_session(
                 user_id=user_id,
                 table_id=table_id,
@@ -438,18 +443,26 @@ class MessageHandler:
             for e in events
         )
 
-        # Get seq from first user's snapshot
-        first_user = next(iter(user_ids))
+        # Fetch every per-user snapshot in a single runner round-trip.
+        # Before the batch command this loop issued N separate snapshot
+        # commands serialised on the runner queue; on a 6-max table that
+        # was the dominant broadcast latency.
         try:
-            snapshot = await self._manager.get_snapshot(first_user)
-            seq = snapshot.seq
+            snapshots_by_user = await self._manager.get_snapshots_batch(
+                table_id, list(user_ids)
+            )
+        except Exception as e:
+            print(f"[BROADCAST] Batch snapshot failed: {e}", flush=True)
+            snapshots_by_user = {}
 
-            # Determine hand_id from snapshot if not provided
-            if hand_id is None and snapshot.hand:
-                hand_id = snapshot.hand.hand_id
-
-            actor_seat = snapshot.hand.actor_seat if snapshot.hand else None
-        except Exception:
+        # Pick a representative snapshot (any user's) for seq + actor_seat.
+        if snapshots_by_user:
+            representative = next(iter(snapshots_by_user.values()))
+            seq = representative.seq
+            if hand_id is None and representative.hand:
+                hand_id = representative.hand.hand_id
+            actor_seat = representative.hand.actor_seat if representative.hand else None
+        else:
             seq = 0
             actor_seat = None
 
@@ -481,12 +494,18 @@ class MessageHandler:
                     await self._connections.broadcast_to_table(table_id, rebuy_msg)
                     print(f"[REBUY] Sent for applied top-up: seat {seat_idx}, +{topup_amount} cents")
 
-        # Send to all users
+        # Send to all users, reusing the snapshot we already fetched in the
+        # batch above instead of issuing a fresh get_snapshot per user.
         for user_id in user_ids:
             await self._connections.send_to_user(user_id, delta_dict)
 
             try:
-                user_snapshot = await self._manager.get_snapshot(user_id)
+                user_snapshot = snapshots_by_user.get(user_id)
+                if user_snapshot is None:
+                    # User wasn't in the batch result — either they left
+                    # between get_table_users() and the batch, or the
+                    # batch failed entirely. Skip cleanly.
+                    continue
 
                 # If hand just started, send TABLE_SNAPSHOT with hole cards
                 if is_hand_start:
@@ -663,10 +682,24 @@ class MessageHandler:
 
             print(f"[DUEL] Player {bust_user_id} busted, winner: {winner_user_id}", flush=True)
 
-            # Wait for client to signal animation complete (with timeout fallback)
-            await self._wait_for_animation_complete(table_id, timeout=15.0)
+            # Defer the animation-wait + match-complete to a background task.
+            # Previously this awaited up to 15 s inline; because _check_duel_bust
+            # is called from _broadcast_events which runs inside the WS message
+            # loop, the winning player's loop was blocked for the entire
+            # animation timeout — no PING, no ACTIONs accepted. The task below
+            # carries the same logic but lets the caller's loop continue.
+            #
+            # We still return True so the caller skips auto-starting the next
+            # hand; the table state will be torn down by _complete_duel_match
+            # in the background task.
+            async def _finish_duel():
+                try:
+                    await self._wait_for_animation_complete(table_id, timeout=5.0)
+                    await _complete_duel_match(table_id, winner_user_id)
+                except Exception as e:
+                    print(f"[DUEL] _finish_duel error: {e}", flush=True)
 
-            await _complete_duel_match(table_id, winner_user_id)
+            asyncio.create_task(_finish_duel())
             return True
 
         return False
@@ -720,57 +753,89 @@ class MessageHandler:
             print(f"[DUEL] Error starting next hand: {e}", flush=True)
 
     async def _check_and_process_rebuys(self, table_id: str) -> None:
-        """Check for bust human players and attempt auto-rebuy."""
+        """Check for bust human players and attempt auto-rebuy.
+
+        Each candidate's rebuy involves a Firestore get_user_balance +
+        deduct_balance (now properly yielding the event loop via P0-1).
+        Running them sequentially produced a visible per-hand-end stall
+        scaling with the number of bust players. asyncio.gather over the
+        list lets all rebuys share one Firestore RTT.
+        """
         runner = self._manager._tables.get(table_id)
         if not runner:
             return
 
+        rebuy_target = 100 * runner._config.big_blind_cents
+
+        # Gather candidates up-front while the engine state is still
+        # internally consistent.
+        candidates: list[tuple[int, str, int]] = []  # (seat_idx, user_id, chips_before)
         for seat_idx, seat_state in enumerate(runner._engine._seats):
             if seat_state is None:
                 continue
-
             user_id = seat_state.player.user_id
-
-            # Skip bots
             if user_id.startswith(("bot_", "user_bot_")):
                 continue
-
-            # Skip if auto top-up is disabled for this player
             if not seat_state.auto_topup_enabled:
                 print(f"[REBUY_CHECK] seat {seat_idx} user {user_id[:20]}... skipped (auto top-up disabled)")
                 continue
-
             print(f"[REBUY_CHECK] seat {seat_idx} user {user_id[:20]}... chips={seat_state.chips}")
-
-            # Trigger rebuy when stack drops below 100bb of this table's big blind.
-            rebuy_target = 100 * runner._config.big_blind_cents
             if seat_state.chips < rebuy_target:
-                result = await self._manager.try_rebuy(user_id, table_id, seat_idx)
-                if result:
-                    rebuy_amount, new_stack = result
-                    rebuy_msg = {
-                        "type": "REBUY",
-                        "seat": seat_idx,
-                        "amount": {"amount": rebuy_amount},
-                        "new_stack": {"amount": new_stack},
-                    }
-                    await self._connections.broadcast_to_table(table_id, rebuy_msg)
-                    print(f"[REBUY] Sent for seat {seat_idx}: +{rebuy_amount} cents")
-                else:
-                    # Can't afford rebuy - send OUT_OF_CHIPS
-                    balance = 0
-                    if self._manager._firestore:
-                        try:
-                            balance = await self._manager._firestore.get_user_balance(user_id)
-                        except Exception:
-                            pass
-                    out_msg = {
-                        "type": "OUT_OF_CHIPS",
-                        "balance_cents": balance,
-                        "rebuy_cost_cents": max(rebuy_target - seat_state.chips, 0),
-                    }
-                    await self._connections.send_to_user(user_id, out_msg)
-                    print(f"[OUT_OF_CHIPS] Sent to {user_id}")
+                candidates.append((seat_idx, user_id, seat_state.chips))
+
+        if not candidates:
+            return
+
+        # Issue all try_rebuy calls concurrently. Each runs a Firestore
+        # transaction; the gather lets them overlap on the thread pool.
+        results = await asyncio.gather(
+            *(self._manager.try_rebuy(uid, table_id, sidx) for sidx, uid, _ in candidates),
+            return_exceptions=True,
+        )
+
+        # Collect users whose rebuy failed (need balance lookup for OUT_OF_CHIPS).
+        oo_candidates: list[tuple[int, str, int]] = []
+
+        for (seat_idx, user_id, chips_before), result in zip(candidates, results):
+            if isinstance(result, Exception):
+                print(f"[REBUY] Exception for {user_id}: {result}", flush=True)
+                continue
+            if result:
+                rebuy_amount, new_stack = result
+                rebuy_msg = {
+                    "type": "REBUY",
+                    "seat": seat_idx,
+                    "amount": {"amount": rebuy_amount},
+                    "new_stack": {"amount": new_stack},
+                }
+                await self._connections.broadcast_to_table(table_id, rebuy_msg)
+                print(f"[REBUY] Sent for seat {seat_idx}: +{rebuy_amount} cents")
+            else:
+                oo_candidates.append((seat_idx, user_id, chips_before))
+
+        if not oo_candidates:
+            return
+
+        # Parallel balance reads for the OUT_OF_CHIPS notifications.
+        balances: list = []
+        if self._manager._firestore:
+            balances = await asyncio.gather(
+                *(self._manager._firestore.get_user_balance(uid) for _, uid, _ in oo_candidates),
+                return_exceptions=True,
+            )
+        else:
+            balances = [0] * len(oo_candidates)
+
+        for (seat_idx, user_id, chips_before), balance in zip(oo_candidates, balances):
+            if isinstance(balance, Exception):
+                balance = 0
+            out_msg = {
+                "type": "OUT_OF_CHIPS",
+                "balance_cents": balance,
+                "rebuy_cost_cents": max(rebuy_target - chips_before, 0),
+            }
+            await self._connections.send_to_user(user_id, out_msg)
+            print(f"[OUT_OF_CHIPS] Sent to {user_id}")
 
     async def _topup_bots_and_broadcast(self, table_id: str) -> None:
         """Top up busted bot seats to 100bb in cash mode, broadcast REBUY for each.

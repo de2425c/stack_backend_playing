@@ -314,6 +314,140 @@ async def _duel_state_sweeper_loop() -> None:
         raise
 
 
+# Hand-logger retry drain interval. Without this, the in-memory retry queue
+# in HandLogger grew unbounded under Firestore flakes since
+# retry_failed_writes() was never called from anywhere.
+HAND_LOG_RETRY_INTERVAL_SECONDS = 60.0
+
+
+# Bot orphan sweeper interval.
+BOT_ORPHAN_SWEEP_INTERVAL_SECONDS = 60.0
+
+
+def _sweep_bot_orphans() -> int:
+    """Kill any openbot_client subprocess whose --table-id no longer maps
+    to a live table.
+
+    `_kill_orphan_bot_processes()` only runs at startup. If a subprocess
+    survives a missed cleanup (race with disconnect / partial bot-table
+    teardown), each one holds ~150-200 MB until the next restart. This
+    periodic sweep cross-checks live processes against ``manager._tables``
+    by parsing the ``--table-id <id>`` argument out of each command line
+    and SIGTERMs the strays.
+
+    Returns the number of processes killed.
+    """
+    if manager is None:
+        return 0
+    try:
+        result = subprocess.run(
+            ["pgrep", "-af", "openbot_client"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return 0
+
+        live_tables = set(manager._tables.keys())
+        killed = 0
+        for line in result.stdout.strip().split("\n"):
+            if not line:
+                continue
+            # pgrep -af → "<pid> <full command line>"
+            parts = line.split(None, 1)
+            if len(parts) < 2:
+                continue
+            try:
+                pid = int(parts[0])
+            except ValueError:
+                continue
+            cmd = parts[1]
+
+            # Extract --table-id <id>
+            tokens = cmd.split()
+            table_id: Optional[str] = None
+            for i, tok in enumerate(tokens):
+                if tok == "--table-id" and i + 1 < len(tokens):
+                    table_id = tokens[i + 1]
+                    break
+            if table_id is None:
+                # Can't tell which table — leave it alone rather than
+                # SIGTERM a process we don't understand.
+                continue
+            if table_id in live_tables:
+                continue
+
+            try:
+                os.kill(pid, signal.SIGTERM)
+                killed += 1
+                print(
+                    f"[BOT_SWEEP] Killed orphan bot pid={pid} "
+                    f"(table_id={table_id} not in live tables)",
+                    flush=True,
+                )
+            except (ProcessLookupError, PermissionError) as e:
+                print(f"[BOT_SWEEP] Couldn't kill pid={pid}: {e}", flush=True)
+        return killed
+    except Exception as e:
+        print(f"[BOT_SWEEP] Sweeper error: {e}", flush=True)
+        return 0
+
+
+async def _bot_orphan_sweeper_loop() -> None:
+    """Periodic loop running _sweep_bot_orphans every N seconds."""
+    print(
+        f"[BOT_SWEEP] Orphan sweeper started "
+        f"(interval={BOT_ORPHAN_SWEEP_INTERVAL_SECONDS}s)",
+        flush=True,
+    )
+    try:
+        while True:
+            await asyncio.sleep(BOT_ORPHAN_SWEEP_INTERVAL_SECONDS)
+            try:
+                await asyncio.to_thread(_sweep_bot_orphans)
+            except Exception as e:
+                print(f"[BOT_SWEEP] Iteration failed: {e}", flush=True)
+    except asyncio.CancelledError:
+        print("[BOT_SWEEP] Orphan sweeper stopped", flush=True)
+        raise
+
+
+async def _hand_log_retry_loop() -> None:
+    """Drain the hand-logger retry queue periodically.
+
+    HandLogger.log_hand() schedules its Firestore write as an asyncio.Task and
+    appends failed writes to _retry_queue. Previously no code called
+    retry_failed_writes(), so any Firestore flake stranded the hand log forever
+    and the queue grew with every fresh failure. This loop runs the drain
+    so a flake heals on its own once Firestore recovers.
+    """
+    print(
+        f"[HAND_LOG][RETRY] Drain loop started "
+        f"(interval={HAND_LOG_RETRY_INTERVAL_SECONDS}s)",
+        flush=True,
+    )
+    try:
+        while True:
+            await asyncio.sleep(HAND_LOG_RETRY_INTERVAL_SECONDS)
+            try:
+                if hand_logger is None:
+                    continue
+                qsize = hand_logger.retry_queue_size
+                if qsize == 0:
+                    continue
+                succeeded = await hand_logger.retry_failed_writes()
+                print(
+                    f"[HAND_LOG][RETRY] Drained {succeeded}/{qsize} pending writes "
+                    f"(remaining={hand_logger.retry_queue_size})",
+                    flush=True,
+                )
+            except Exception as e:
+                print(f"[HAND_LOG][RETRY] Iteration failed: {e}", flush=True)
+    except asyncio.CancelledError:
+        print("[HAND_LOG][RETRY] Drain loop stopped", flush=True)
+        raise
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan - initialize and cleanup resources."""
@@ -378,12 +512,16 @@ async def lifespan(app: FastAPI):
 
     sweeper_task = asyncio.create_task(_duel_state_sweeper_loop())
     heartbeat_task = asyncio.create_task(_heartbeat_reaper_loop())
+    hand_log_retry_task = asyncio.create_task(_hand_log_retry_loop())
+    bot_orphan_task = asyncio.create_task(_bot_orphan_sweeper_loop())
 
     yield
 
     sweeper_task.cancel()
     heartbeat_task.cancel()
-    for t in (sweeper_task, heartbeat_task):
+    hand_log_retry_task.cancel()
+    bot_orphan_task.cancel()
+    for t in (sweeper_task, heartbeat_task, hand_log_retry_task, bot_orphan_task):
         try:
             await t
         except (asyncio.CancelledError, Exception):
@@ -2520,7 +2658,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
         token = data.get("token", "")
         auth = AuthService()
-        user_id = auth.verify_token(token)
+        user_id = await auth.verify_token_async(token)
 
         if not user_id:
             await websocket.send_json({
@@ -2540,6 +2678,11 @@ async def websocket_endpoint(websocket: WebSocket):
             except Exception:
                 pass
         connections._connections[user_id] = websocket
+        # Seed `_last_seen` immediately. Without this, the heartbeat reaper
+        # treats freshly-authed users (whose first inbound message hasn't yet
+        # called `mark_seen`) as stale and closes their socket within ~5s,
+        # producing a reconnect storm for anyone idling in the lobby.
+        connections._last_seen[user_id] = time.monotonic()
 
         # Cancel any pending grace period - player has reconnected
         was_in_grace_period = reconnect_mgr.cancel_grace_period(user_id)
@@ -2694,13 +2837,22 @@ async def websocket_endpoint(websocket: WebSocket):
             elif msg_type == "REQUEST_SNAPSHOT":
                 # Client detected a seq gap and wants a fresh snapshot
                 # without doing a full reconnect. Reuse manager.get_snapshot
-                # (same path used by the post-AUTH reconnect flow).
+                # (same path used by the post-AUTH reconnect flow). If it's
+                # the requester's turn, also re-send ACTION_REQUEST so the
+                # client can drop its local synthesize-and-guess path
+                # (former iOS behaviour drifted out of sync with the
+                # server timer — see INVESTIGATION.md P1-9).
                 try:
                     snapshot = await manager.get_snapshot(user_id)
                     if snapshot is not None:
                         await connections.send_to_user(
                             user_id, snapshot.model_dump(mode="json")
                         )
+                        if snapshot.hand:
+                            actor_seat = snapshot.hand.actor_seat
+                            your_seat = snapshot.your_seat
+                            if actor_seat is not None and actor_seat == your_seat:
+                                await handler._send_action_request(user_id, snapshot)
                     else:
                         await connections.send_to_user(user_id, {
                             "type": "ERROR",
@@ -2750,32 +2902,47 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.exception(f"WebSocket error: {e}", user_id=user_id)
     finally:
         if user_id:
-            # Remove WebSocket from active connections
-            connections._connections.pop(user_id, None)
-
-            # Check bot table owners FIRST - clean up immediately (no grace period)
-            if user_id in _bot_table_owners:
-                logger.info("Bot table owner disconnected, cleaning up immediately", user_id=user_id)
-                await _cleanup_bot_table(user_id)
-            elif user_id in _user_duels:
-                # Check if in duel queue (waiting) vs active duel
-                match_id = _user_duels.get(user_id)
-                table_id = manager.get_table_for_user(user_id)
-
-                if table_id and table_id in _active_duels:
-                    # In active duel - notify opponent, start grace period, then forfeit.
-                    logger.info(f"Duel player disconnected, starting {DUEL_DISCONNECT_GRACE_SECONDS}s grace period", user_id=user_id)
-                    await _start_duel_disconnect_grace(user_id, table_id)
-                else:
-                    # In queue - cancel and refund
-                    await _cancel_duel_queue(user_id)
-                    logger.info("Duel queue cancelled for disconnected player", user_id=user_id)
+            # Identity check: a fast reconnect can install a newer WS for the
+            # same user_id while this task is still in flight. Without this
+            # guard, the old task's finally would pop the NEW connection from
+            # `_connections` and (worse) run cleanup-style side effects —
+            # `_cleanup_bot_table`, `_start_duel_disconnect_grace`,
+            # `reconnect_mgr.start_grace_period` — for a user who is in
+            # fact currently online. Skip everything if we're not the
+            # current owner of `_connections[user_id]`.
+            current_ws = connections._connections.get(user_id)
+            if current_ws is not websocket:
+                logger.info(
+                    "Stale WS finally; a newer connection has replaced us — skipping cleanup",
+                    user_id=user_id,
+                )
             else:
-                # Regular players: start grace period for reconnection
-                table_id = manager.get_table_for_user(user_id)
-                if table_id and not user_id.startswith(("bot_", "user_bot_")):
-                    reconnect_mgr.start_grace_period(user_id, table_id)
-                    logger.info("Grace period started for disconnected player", user_id=user_id, table_id=table_id)
+                # Remove WebSocket from active connections
+                connections._connections.pop(user_id, None)
+
+                # Check bot table owners FIRST - clean up immediately (no grace period)
+                if user_id in _bot_table_owners:
+                    logger.info("Bot table owner disconnected, cleaning up immediately", user_id=user_id)
+                    await _cleanup_bot_table(user_id)
+                elif user_id in _user_duels:
+                    # Check if in duel queue (waiting) vs active duel
+                    match_id = _user_duels.get(user_id)
+                    table_id = manager.get_table_for_user(user_id)
+
+                    if table_id and table_id in _active_duels:
+                        # In active duel - notify opponent, start grace period, then forfeit.
+                        logger.info(f"Duel player disconnected, starting {DUEL_DISCONNECT_GRACE_SECONDS}s grace period", user_id=user_id)
+                        await _start_duel_disconnect_grace(user_id, table_id)
+                    else:
+                        # In queue - cancel and refund
+                        await _cancel_duel_queue(user_id)
+                        logger.info("Duel queue cancelled for disconnected player", user_id=user_id)
                 else:
-                    # No table - just clean up connection tracking
-                    connections.disconnect(user_id)
+                    # Regular players: start grace period for reconnection
+                    table_id = manager.get_table_for_user(user_id)
+                    if table_id and not user_id.startswith(("bot_", "user_bot_")):
+                        reconnect_mgr.start_grace_period(user_id, table_id)
+                        logger.info("Grace period started for disconnected player", user_id=user_id, table_id=table_id)
+                    else:
+                        # No table - just clean up connection tracking
+                        connections.disconnect(user_id)

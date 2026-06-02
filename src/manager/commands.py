@@ -53,6 +53,22 @@ class GetSnapshotCommand:
 
 
 @dataclass
+class GetSnapshotsBatchCommand:
+    """Request table snapshots for many users in one queue round-trip.
+
+    Avoids the N+1 pattern in handler._broadcast_events where one snapshot
+    per user was issued as a separate command. The runner serialises
+    commands, so calling get_snapshot in a loop produced N round-trips
+    through the queue instead of one — directly translating to N times
+    the broadcast latency at a 6-max table.
+    """
+    user_ids: list[str]
+    # Resolves to dict[user_id -> TableSnapshotMessage]. Users not seated
+    # at this table at command time are silently dropped from the dict.
+    result_future: asyncio.Future
+
+
+@dataclass
 class GetActionRequestCommand:
     """Request action request for a user who needs to act."""
     user_id: str
@@ -76,6 +92,7 @@ TableCommand = Union[
     PlayerActionCommand,
     StartHandCommand,
     GetSnapshotCommand,
+    GetSnapshotsBatchCommand,
     GetActionRequestCommand,
     TimeoutActionCommand,
 ]

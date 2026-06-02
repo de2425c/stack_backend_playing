@@ -126,16 +126,24 @@ class BotPersonaPool:
     """
     Manages assignment of bot personas to duel opponents.
 
-    Tracks which personas are currently in use to avoid duplicates.
+    Tracks which personas are currently in use to avoid duplicates and
+    caches each persona's current rating in memory so opponent selection
+    doesn't trigger 70 sequential Firestore reads on the event loop.
     """
 
     def __init__(self, firestore_client=None):
         self._firestore = firestore_client
         self._in_use: set[str] = set()  # persona_ids currently assigned
+        # persona_id -> latest known rating (defaults to 1500 if no
+        # duel_ratings doc exists). Seeded in ensure_personas_exist and
+        # invalidated on release_persona so the next assignment refreshes.
+        self._rating_cache: dict[str, float] = {}
+        self._stale_ratings: set[str] = set()
 
     async def ensure_personas_exist(self) -> None:
         """
-        Seed bot personas into Firestore if they don't exist.
+        Seed bot personas into Firestore if they don't exist and warm
+        the rating cache.
 
         Called on server startup.
         """
@@ -165,6 +173,30 @@ class BotPersonaPool:
         else:
             print(f"[BOT_PERSONAS] All {len(BOT_PERSONAS)} personas already exist")
 
+        # Warm the rating cache with one batched read so the first
+        # get_available_persona doesn't have to do 70 single reads.
+        await self._refresh_rating_cache()
+
+    async def _refresh_rating_cache(self) -> None:
+        """Batch-load all persona ratings into the in-memory cache."""
+        if not self._firestore:
+            return
+        persona_ids = [
+            generate_persona_id(p["username"]) for p in BOT_PERSONAS
+        ]
+        try:
+            results = await self._firestore.get_duel_ratings(persona_ids)
+        except Exception as e:
+            print(f"[BOT_PERSONAS] Rating cache refresh failed: {e}", flush=True)
+            return
+        for pid, rating_doc in results.items():
+            if rating_doc:
+                self._rating_cache[pid] = rating_doc.get("rating", 1500)
+            else:
+                self._rating_cache[pid] = 1500
+        self._stale_ratings.clear()
+        print(f"[BOT_PERSONAS] Rating cache warmed ({len(self._rating_cache)} entries)")
+
     async def get_available_persona(self, target_rating: float = 1500) -> Optional[dict]:
         """
         Get an available bot persona, preferring ones with similar rating.
@@ -175,25 +207,32 @@ class BotPersonaPool:
         Returns:
             Persona dict with id, username, displayName, or None if all in use
         """
-        available = []
+        # If any persona's rating is stale, batch-refresh it. This single
+        # round-trip replaces the previous N sequential per-persona reads.
+        if self._stale_ratings and self._firestore:
+            try:
+                stale_ids = list(self._stale_ratings)
+                fresh = await self._firestore.get_duel_ratings(stale_ids)
+                for pid, doc in fresh.items():
+                    if doc:
+                        self._rating_cache[pid] = doc.get("rating", 1500)
+                self._stale_ratings.clear()
+            except Exception as e:
+                print(f"[BOT_PERSONAS] Stale-rating refresh failed: {e}", flush=True)
 
+        available = []
         for persona in BOT_PERSONAS:
             persona_id = generate_persona_id(persona["username"])
-            if persona_id not in self._in_use:
-                # Get rating from duel_ratings if available
-                rating = 1500  # Default
-                if self._firestore:
-                    rating_doc = await self._firestore.get_duel_rating(persona_id)
-                    if rating_doc:
-                        rating = rating_doc.get("rating", 1500)
-
-                available.append({
-                    "persona_id": persona_id,
-                    "username": persona["username"],
-                    "displayName": persona["displayName"],
-                    "rating": rating,
-                    "rating_diff": abs(rating - target_rating),
-                })
+            if persona_id in self._in_use:
+                continue
+            rating = self._rating_cache.get(persona_id, 1500)
+            available.append({
+                "persona_id": persona_id,
+                "username": persona["username"],
+                "displayName": persona["displayName"],
+                "rating": rating,
+                "rating_diff": abs(rating - target_rating),
+            })
 
         if not available:
             return None
@@ -213,8 +252,15 @@ class BotPersonaPool:
         }
 
     def release_persona(self, persona_id: str) -> None:
-        """Release a persona back to the pool after duel ends."""
+        """Release a persona back to the pool after duel ends.
+
+        Mark the persona's rating as stale so the next get_available_persona
+        picks up the post-match rating change without doing a per-persona
+        Firestore read.
+        """
         self._in_use.discard(persona_id)
+        # Rating may have changed during the duel that just ended.
+        self._stale_ratings.add(persona_id)
 
     def get_display_name(self, persona_id: str) -> str:
         """Get display name for a persona ID."""

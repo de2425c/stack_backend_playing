@@ -18,6 +18,7 @@ from .commands import (
     PlayerActionCommand,
     StartHandCommand,
     GetSnapshotCommand,
+    GetSnapshotsBatchCommand,
     GetActionRequestCommand,
     TimeoutActionCommand,
 )
@@ -116,16 +117,21 @@ class TableRunner:
                 pass
 
     async def _run(self) -> None:
-        """Main processing loop - runs commands serially."""
-        while self._running:
+        """Main processing loop - runs commands serially.
+
+        Uses a bare ``queue.get()`` instead of polling with a 100 ms
+        ``wait_for``. The polling added 0-100 ms of artificial latency
+        to every command; the underlying ``asyncio.Queue.get()``
+        already integrates with ``Task.cancel()`` so the cancellation
+        path in ``stop()`` still works correctly.
+        """
+        while True:
             try:
-                command = await asyncio.wait_for(
-                    self._queue.get(),
-                    timeout=0.1
-                )
+                command = await self._queue.get()
+            except asyncio.CancelledError:
+                break
+            try:
                 await self._process(command)
-            except asyncio.TimeoutError:
-                continue
             except asyncio.CancelledError:
                 break
 
@@ -142,6 +148,8 @@ class TableRunner:
                 result = self._handle_start_hand(command)
             elif isinstance(command, GetSnapshotCommand):
                 result = self._handle_snapshot(command)
+            elif isinstance(command, GetSnapshotsBatchCommand):
+                result = self._handle_snapshots_batch(command)
             elif isinstance(command, GetActionRequestCommand):
                 result = self._handle_action_request(command)
             elif isinstance(command, TimeoutActionCommand):
@@ -260,6 +268,22 @@ class TableRunner:
         if seat is None:
             raise ValueError("User not at table")
         return self._engine.get_snapshot(seat)
+
+    def _handle_snapshots_batch(self, cmd: GetSnapshotsBatchCommand):
+        """Handle a batch snapshot request.
+
+        Builds the per-user snapshot dict in one runner round-trip. Users
+        not seated at this table are silently skipped (the caller in
+        handler._broadcast_events races with disconnect/leave flows, so
+        a missing user is expected and not an error).
+        """
+        snapshots: dict[str, object] = {}
+        for user_id in cmd.user_ids:
+            seat = self._user_seats.get(user_id)
+            if seat is None:
+                continue
+            snapshots[user_id] = self._engine.get_snapshot(seat)
+        return snapshots
 
     def _handle_action_request(self, cmd: GetActionRequestCommand):
         """Handle action request."""

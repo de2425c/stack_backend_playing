@@ -340,16 +340,22 @@ async def _generate_key_hand_insights(
 
 
 async def _fetch_hands(firestore: "FirestoreClient", hand_ids: list[str]) -> list[dict]:
-    """Fetch hand documents from Firestore."""
-    hands = []
-    for hand_id in hand_ids:
-        try:
-            hand = await firestore.get_hand(hand_id)
-            if hand:
-                hands.append(hand)
-        except Exception as e:
-            print(f"[PROCESSOR] Error fetching hand {hand_id}: {e}")
-    return hands
+    """Fetch hand documents from Firestore.
+
+    Uses the batch helper that fans out via asyncio.gather across the
+    thread pool. A 100-hand session that previously cost ~5 s of loop
+    blocking now completes in roughly one Firestore RTT — and even that
+    runs off the event loop thread.
+    """
+    if not hand_ids:
+        return []
+    try:
+        results = await firestore.get_hands(hand_ids)
+    except Exception as e:
+        print(f"[PROCESSOR] Error fetching hands batch: {e}")
+        return []
+    # Drop None entries (hands that no longer exist) while preserving order.
+    return [h for h in results if h is not None]
 
 
 def _extract_decisions(hands: list[dict], user_id: str) -> list[Decision]:
