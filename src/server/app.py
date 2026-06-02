@@ -363,8 +363,28 @@ def _sweep_bot_orphans() -> int:
                 continue
             cmd = parts[1]
 
-            # Extract --table-id <id>
             tokens = cmd.split()
+
+            # Only sweep bots that belong to THIS server instance. pgrep is
+            # machine-global but manager._tables is per-instance, so with
+            # multiple instances on one host (e.g. 8000 + 8001) each instance
+            # would otherwise SIGTERM the OTHER instance's live bots — their
+            # table_ids are never in this instance's _tables. Each bot's
+            # `--server ws://localhost:<port>/ws` identifies its owner; skip
+            # any whose port isn't ours.
+            bot_server_port: Optional[str] = None
+            for i, tok in enumerate(tokens):
+                if tok == "--server" and i + 1 < len(tokens):
+                    # e.g. "ws://localhost:8001/ws" → "8001"
+                    host_port = tokens[i + 1].rsplit(":", 1)
+                    if len(host_port) == 2:
+                        bot_server_port = host_port[1].split("/", 1)[0]
+                    break
+            if bot_server_port is not None and bot_server_port != str(_SERVER_PORT):
+                # Belongs to another server instance on this host.
+                continue
+
+            # Extract --table-id <id>
             table_id: Optional[str] = None
             for i, tok in enumerate(tokens):
                 if tok == "--table-id" and i + 1 < len(tokens):
