@@ -7,18 +7,32 @@ original audit but may matter.
 
 ## Repository layout
 
-- **Backend:** `stack_backend_playing` (this repo) — main branch, 20 fix commits + docs.
-- **iOS:** `stack_poker/stackpoker` — main branch, 9 fix commits (P0-4, P1-1, P1-2, P1-3, P1-9, P1-10, P2-2, P2-6).
+- **Backend:** `stack_backend_playing` (this repo) — main branch, round-1
+  21 fix commits + docs + summary + round-2 5 fix commits.
+- **iOS:** `stack_poker/stackpoker` — main branch, 9 fix commits (P0-4,
+  P1-1, P1-2, P1-3, P1-9, P1-10, P2-2, P2-6).
 
 Two cross-repo fixes (P0-4 / P1-9) have commits on both sides.
 
 ## One-line summary
 
-All 20 findings (4× P0, 10× P1, 6× P2) are addressed. Backend modules
-parse and import cleanly; iOS builds Debug for iOS Simulator. Behavioural
-verification (real Firestore RTT, observed UI freezes, multi-bot
-sessions) is deferred to a deploy-and-watch step — see "Unverified"
-below.
+All 20 round-1 findings (4× P0, 10× P1, 6× P2) plus 5 round-2 findings
+(P0-5, P0-6, P1-11, P1-13, P1-14; P1-12 was intentionally skipped as
+minor) are addressed. Backend modules parse and import cleanly; iOS
+builds Debug for iOS Simulator. Behavioural verification (real
+Firestore RTT, observed UI freezes, multi-bot sessions) is deferred
+to a deploy-and-watch step — see "Unverified" below.
+
+## Round 2 findings (added after second investigation pass)
+
+| # | Title | Status | Backend | Verification |
+|---|---|---|---|---|
+| P0-5 | Old WS task `finally` clobbers reconnected WS | ✅ FIXED | `2ef5155` | Code-trace; logic mirrors send_to_user re-fetch pattern |
+| P0-6 | sync verify_id_token in WS auth path | ✅ FIXED | `bc322fa` | In-memory smoke for dev-mode + bot-token short-circuit |
+| P1-11 | try_rebuy / request_topup no refund-on-fail | ✅ FIXED | `6ca8a01` | In-memory happy-path; failure path mirrors P0-3 |
+| P1-12 | handle_set_auto_top_up bypasses runner | ⏭️ SKIPPED (minor, atomic bool write under GIL) | — | — |
+| P1-13 | Bot subprocesses leak SessionTracker entries | ✅ FIXED | `7a20853` | Code-trace; add_hand no-op for missing session |
+| P1-14 | broadcast_to_table serial across users | ✅ FIXED | `b222ca7` | In-memory benchmark: 6 users × 50ms → 51ms parallel (vs ~300ms sequential) |
 
 ---
 
