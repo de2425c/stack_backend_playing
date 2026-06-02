@@ -564,21 +564,30 @@ class MessageHandler:
 
         # Send to all users, reusing the snapshot we already fetched in the
         # batch above instead of issuing a fresh get_snapshot per user.
+        #
+        # On hand_start: TABLE_SNAPSHOT goes FIRST so the client has
+        # hole cards + new hand_id + post-blind seat bets BEFORE the
+        # STATE_DELTA's hand_started clears them and the post_blind
+        # events re-apply (P1-11). Eliminates the slow-network window
+        # where the hero saw "new hand started" without their cards.
         for user_id in user_ids:
-            await self._connections.send_to_user(user_id, delta_dict)
-
             try:
                 user_snapshot = snapshots_by_user.get(user_id)
                 if user_snapshot is None:
                     # User wasn't in the batch result — either they left
                     # between get_table_users() and the batch, or the
-                    # batch failed entirely. Skip cleanly.
+                    # batch failed entirely. Send the delta anyway so
+                    # they get the event stream.
+                    await self._connections.send_to_user(user_id, delta_dict)
                     continue
 
-                # If hand just started, send TABLE_SNAPSHOT with hole cards
+                # P1-11: snapshot first on hand_start.
                 if is_hand_start:
                     snapshot_dict = user_snapshot.model_dump(mode="json")
                     await self._connections.send_to_user(user_id, snapshot_dict)
+
+                # Always send the STATE_DELTA (event stream).
+                await self._connections.send_to_user(user_id, delta_dict)
 
                 # Check if this user is the actor and send ACTION_REQUEST
                 actor_seat = user_snapshot.hand.actor_seat if user_snapshot.hand else None
