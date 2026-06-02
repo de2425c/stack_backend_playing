@@ -1112,6 +1112,177 @@ Also affects PlayTab's blitz-advance loop at PlayTab.swift:1348.
 
 ---
 
+# Round 2 — High-Value iOS↔Backend Interaction Findings
+
+Second pass focused on protocol races, state synchronisation, and
+financial code paths I hadn't traced exhaustively the first time.
+Lower-value items (logging spam, minor UX nits) are intentionally
+omitted.
+
+## P0-5 — Old WS task's `finally` clobbers a freshly reconnected connection  ✅ FIXED
+
+**Status:** FIXED — added an identity check at the top of the WS
+endpoint's `finally`. Before any cleanup, we look up
+`connections._connections[user_id]` and bail out of the cleanup if
+the current entry is not THIS task's websocket. A newer connection's
+task is then free to own its lifecycle.
+
+**Verification:** parse-check; logic mirrors the per-user lock pattern
+in `ConnectionManager.send_to_user` which already does the same
+"re-fetch under lock" defensive check (connection.py:108-111).
+
+**Original finding:**
+
+
+**Symptom:** A user reconnects (background→foreground, transient WS
+drop) and the new connection appears to authenticate normally — but
+broadcasts never reach them. The next outbound `send_to_user` returns
+False. Re-reconnecting "fixes" it.
+
+**Root cause:** `app.py:2680` in the WS endpoint writes
+`connections._connections[user_id] = websocket` after closing the
+previous WS (line 2677). The **old WS's coroutine** is still running
+in another task. When its `receive_json` raises `WebSocketDisconnect`,
+control passes to the `finally` block at line 2903 which
+**unconditionally pops**:
+
+```python
+finally:
+    if user_id:
+        connections._connections.pop(user_id, None)
+        ...
+```
+
+Order of events that loses the new connection:
+1. Old task is parked in `await websocket.receive_json()`.
+2. New AUTH arrives. New task closes the old WS, assigns
+   `_connections[user_id] = NEW_WS`.
+3. Old task's `receive_json` raises → jumps to `finally`.
+4. `_connections.pop(user_id, None)` removes the **new** WS.
+5. New connection is registered for table_users but its
+   `_connections[user_id]` entry is gone. All `send_to_user` calls
+   return False. The client is silent.
+
+Worse: the finally block also runs `_cleanup_bot_table`,
+`_start_duel_disconnect_grace`, or `reconnect_mgr.start_grace_period`
+for the new connection's user_id, depending on which branch fires.
+That can:
+- Kill the bot subprocess for a user who just reconnected to their
+  bot table.
+- Start a duel forfeit grace period for a user who just reconnected.
+
+**Severity:** P0. Triggered on every fast reconnect that races the
+old task's wakeup.
+
+**Fix sketch:** in the `finally`, identify-this-WS before cleanup:
+```python
+finally:
+    if user_id:
+        current = connections._connections.get(user_id)
+        if current is websocket:
+            connections._connections.pop(user_id, None)
+            ... cleanup ...
+        # else: a newer task replaced us; let it own its lifecycle.
+```
+
+---
+
+## P0-6 — `verify_id_token` is sync inside the WS auth path
+
+**Symptom:** Server-wide freeze of ~50–300 ms (longer when Firebase
+refreshes its signing-key set, ~once per hour) on every WebSocket
+AUTH. With the P0-2 fix in place users now stay connected, but every
+fresh connect storm during a deploy / instance recycle blocks the
+event loop for the duration of the AUTH RPC.
+
+**Root cause:** `src/server/auth.py:116` calls
+`self._firebase_auth.verify_id_token(token)` — the Firebase Admin
+SDK's synchronous verifier — and the call is invoked from the async
+WS endpoint at `app.py:2661`:
+
+```python
+auth = AuthService()
+user_id = auth.verify_token(token)   # ← blocking
+```
+
+Plus a SECOND sync verify at `handler.py:56` inside `handle_auth` (the
+WS endpoint already verified once, then calls `handle_auth` which
+verifies again). So every successful AUTH does two sync RPCs.
+
+Same problem-class as P0-1 (sync Firestore) but in the auth path.
+
+**Fix:**
+1. Dispatch `verify_id_token` via `asyncio.to_thread` in
+   `AuthService.verify_token`.
+2. Dedup the second verify in `handle_auth` — pass the
+   already-verified user_id in.
+
+---
+
+## P1-11 — `try_rebuy` and `request_topup` debit wallets without refund-on-fail
+
+**Symptom:** During cancellation between `deduct_balance` and the
+`seat_state.chips`/`pending_topup` mutation, money debits but doesn't
+land. Rare in normal operation but possible during process recycle
+mid-rebuy.
+
+**Root cause:** Same shape as P0-3, but in two more entry points that
+weren't fixed:
+- `manager.py:try_rebuy` (line 396-434) — `await deduct_balance`,
+  then `seat_state.chips = max_stack`.
+- `manager.py:request_topup` (line 436-478) — `await deduct_balance`,
+  then `seat_state.pending_topup += topup_amount`.
+
+If the task is cancelled between the two, the wallet is debited but
+the engine seat state never gets updated. Money lost.
+
+**Fix:** Wrap both in a try/finally with `asyncio.shield`-protected
+refund, mirroring the P0-3 pattern.
+
+---
+
+## P1-12 — `handle_set_auto_top_up` mutates engine state outside the runner
+
+**Symptom:** Toggling auto-top-up mid-hand has indeterminate ordering
+with respect to `_check_and_process_rebuys` and other engine reads/
+writes. Probably benign but a design smell.
+
+**Root cause:** `handler.py:386` mutates `seat_state.auto_topup_enabled`
+directly from the WS handler task instead of going through the runner
+queue. The engine's state is supposed to be runner-owned.
+
+**Fix:** Add a `SetAutoTopUpCommand` and route through the runner like
+every other state mutation. Lower priority than the others; this is a
+single bool write so race semantics are benign under Python's GIL.
+
+---
+
+## P1-13 — Bot subprocesses leak SessionTracker entries
+
+**Symptom:** SessionTracker `_sessions` dict grows by one entry per
+bot subprocess that joins a table, never released. Slow memory growth.
+
+**Root cause:** `handler.complete_join` (line 156-165) calls
+`session_tracker.start_session(user_id=user_id, ...)` for EVERY user
+that joins a table. Bot subprocesses route through the same JOIN_POOL
+/ JOIN_TABLE code path. When the bot table is cleaned up, bots aren't
+typically removed via `remove_player` (the subprocess is killed
+instead), so `session_tracker.end_session(bot_user_id, ...)` is never
+called. Each bot session lives until process restart.
+
+A bot table with 5 bots = 5 leaked session entries per bot table
+lifecycle.
+
+**Fix:** Either:
+1. Skip `start_session` when `user_id.startswith(("bot_", "user_bot_"))`
+   in `complete_join`.
+2. Add an `end_session(bot_user_id)` call inside `_cleanup_bot_table`
+   for each bot user.
+
+Option 1 is cleaner.
+
+---
+
 # Confidence Caveats
 
 - All "Confirmed" findings have a clear code path. They will manifest under the conditions described, even if I haven't reproduced them empirically.

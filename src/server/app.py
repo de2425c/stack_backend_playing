@@ -2902,32 +2902,47 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.exception(f"WebSocket error: {e}", user_id=user_id)
     finally:
         if user_id:
-            # Remove WebSocket from active connections
-            connections._connections.pop(user_id, None)
-
-            # Check bot table owners FIRST - clean up immediately (no grace period)
-            if user_id in _bot_table_owners:
-                logger.info("Bot table owner disconnected, cleaning up immediately", user_id=user_id)
-                await _cleanup_bot_table(user_id)
-            elif user_id in _user_duels:
-                # Check if in duel queue (waiting) vs active duel
-                match_id = _user_duels.get(user_id)
-                table_id = manager.get_table_for_user(user_id)
-
-                if table_id and table_id in _active_duels:
-                    # In active duel - notify opponent, start grace period, then forfeit.
-                    logger.info(f"Duel player disconnected, starting {DUEL_DISCONNECT_GRACE_SECONDS}s grace period", user_id=user_id)
-                    await _start_duel_disconnect_grace(user_id, table_id)
-                else:
-                    # In queue - cancel and refund
-                    await _cancel_duel_queue(user_id)
-                    logger.info("Duel queue cancelled for disconnected player", user_id=user_id)
+            # Identity check: a fast reconnect can install a newer WS for the
+            # same user_id while this task is still in flight. Without this
+            # guard, the old task's finally would pop the NEW connection from
+            # `_connections` and (worse) run cleanup-style side effects —
+            # `_cleanup_bot_table`, `_start_duel_disconnect_grace`,
+            # `reconnect_mgr.start_grace_period` — for a user who is in
+            # fact currently online. Skip everything if we're not the
+            # current owner of `_connections[user_id]`.
+            current_ws = connections._connections.get(user_id)
+            if current_ws is not websocket:
+                logger.info(
+                    "Stale WS finally; a newer connection has replaced us — skipping cleanup",
+                    user_id=user_id,
+                )
             else:
-                # Regular players: start grace period for reconnection
-                table_id = manager.get_table_for_user(user_id)
-                if table_id and not user_id.startswith(("bot_", "user_bot_")):
-                    reconnect_mgr.start_grace_period(user_id, table_id)
-                    logger.info("Grace period started for disconnected player", user_id=user_id, table_id=table_id)
+                # Remove WebSocket from active connections
+                connections._connections.pop(user_id, None)
+
+                # Check bot table owners FIRST - clean up immediately (no grace period)
+                if user_id in _bot_table_owners:
+                    logger.info("Bot table owner disconnected, cleaning up immediately", user_id=user_id)
+                    await _cleanup_bot_table(user_id)
+                elif user_id in _user_duels:
+                    # Check if in duel queue (waiting) vs active duel
+                    match_id = _user_duels.get(user_id)
+                    table_id = manager.get_table_for_user(user_id)
+
+                    if table_id and table_id in _active_duels:
+                        # In active duel - notify opponent, start grace period, then forfeit.
+                        logger.info(f"Duel player disconnected, starting {DUEL_DISCONNECT_GRACE_SECONDS}s grace period", user_id=user_id)
+                        await _start_duel_disconnect_grace(user_id, table_id)
+                    else:
+                        # In queue - cancel and refund
+                        await _cancel_duel_queue(user_id)
+                        logger.info("Duel queue cancelled for disconnected player", user_id=user_id)
                 else:
-                    # No table - just clean up connection tracking
-                    connections.disconnect(user_id)
+                    # Regular players: start grace period for reconnection
+                    table_id = manager.get_table_for_user(user_id)
+                    if table_id and not user_id.startswith(("bot_", "user_bot_")):
+                        reconnect_mgr.start_grace_period(user_id, table_id)
+                        logger.info("Grace period started for disconnected player", user_id=user_id, table_id=table_id)
+                    else:
+                        # No table - just clean up connection tracking
+                        connections.disconnect(user_id)
