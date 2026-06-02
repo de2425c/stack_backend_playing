@@ -645,12 +645,29 @@ class MessageHandler:
                     uid for uid in user_ids if not uid.startswith("user_bot_")
                 ]
                 if not human_users:
-                    asyncio.create_task(self._auto_start_next_hand(table_id))
+                    # P2-4: was sleeping a fixed 3s. Now waits for
+                    # ANIMATION_COMPLETE from any connected client
+                    # (with the 3s fallback if no one ACKs).
+                    asyncio.create_task(
+                        self._auto_start_next_hand(table_id, wait_for_animation=True)
+                    )
 
-    async def _auto_start_next_hand(self, table_id: str, delay: float = 3.0) -> None:
-        """Auto-start the next hand after a delay."""
-        print(f"[AUTO-START] Waiting {delay}s before starting hand on {table_id}")
-        await asyncio.sleep(delay)
+    async def _auto_start_next_hand(
+        self, table_id: str, delay: float = 3.0, wait_for_animation: bool = False
+    ) -> None:
+        """Auto-start the next hand after a delay or animation-complete signal.
+
+        P2-4: when called from the no-humans post-hand path, prefer the
+        client ANIMATION_COMPLETE signal (same as duel mode) over a
+        fixed 3s sleep. Falls back to ``delay`` if no client ACKs
+        within the timeout.
+        """
+        if wait_for_animation:
+            print(f"[AUTO-START] Waiting for ANIMATION_COMPLETE on {table_id} (fallback {delay}s)")
+            await self._wait_for_animation_complete(table_id, timeout=delay)
+        else:
+            print(f"[AUTO-START] Waiting {delay}s before starting hand on {table_id}")
+            await asyncio.sleep(delay)
 
         # Check if table still has enough players
         runner = self._manager._tables.get(table_id)
