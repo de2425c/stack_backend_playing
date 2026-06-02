@@ -728,7 +728,7 @@ class PokerTableEngine:
         return TableSnapshotMessage(
             table_id=self._table_id,
             status=self._status,
-            stake_id="nlh_1_2",  # TODO: make configurable
+            stake_id=self._config.stake_id,  # P1-13 (was hardcoded "nlh_1_2")
             small_blind=Chips(amount=self._config.small_blind_cents),
             big_blind=Chips(amount=self._config.big_blind_cents),
             seats=seats,
