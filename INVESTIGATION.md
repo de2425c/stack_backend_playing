@@ -804,7 +804,24 @@ the same way.
 
 ---
 
-## P2-2 — `applyEvents` rebuilds `seats[]` element-by-element, triggering many @Published fires per event
+## P2-2 — `applyEvents` rebuilds `seats[]` element-by-element, triggering many @Published fires per event  ✅ FIXED
+
+**Status:** FIXED — restructured the four bulk-mutation sites in
+`applyEvents` (hand_started bets+button, street_dealt bulk runout,
+street_dealt queued runout, street_dealt normal, hand_ended bets+winner
+chips) to mutate a local `var newSeats = seats` and assign
+`seats = newSeats` once. SwiftUI sees a single update where before it
+saw up to 2N.
+
+Per-seat-action mutations inside the "action" case (fold/bet/raise)
+are still single writes — they only ever touch one seat per event, so
+batching wouldn't help.
+
+**Verification:** Build succeeded. Behavioural parity preserved — the
+final seats[] state is identical; only the publish granularity changed.
+
+**Original finding:**
+
 
 **Symptom (iOS):** Compounds **P0-4** during big multi-event deltas — for an all-in runout that fires `street_dealt(turn)` with bet-clearing, the loop at `PokerTableState.swift:826-838` does up to 6 individual `seats[i] = …` assignments.
 
