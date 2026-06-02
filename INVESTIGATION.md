@@ -749,7 +749,18 @@ Either way, the user is acting on stale local state.
 
 ---
 
-## P1-10 — Recursive `handleDisconnect` on failed reconnects
+## P1-10 — Recursive `handleDisconnect` on failed reconnects  ✅ FIXED
+
+**Status:** FIXED — converted the recursive `handleDisconnect` to an
+iterative `while reconnectAttempts < maxReconnectAttempts` loop. Each
+attempt calls `establishConnection`; on success the loop returns, on
+failure it logs and continues the loop. Same retry budget, no stack
+growth.
+
+**Verification:** Build succeeded.
+
+**Original finding:**
+
 
 **Symptom (iOS):** Edge-case: many concurrent reconnects deepen the await stack; if reconnect attempts overlap with network flap, stack growth could trigger task explosions.
 
