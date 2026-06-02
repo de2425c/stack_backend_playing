@@ -2658,7 +2658,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
         token = data.get("token", "")
         auth = AuthService()
-        user_id = auth.verify_token(token)
+        user_id = await auth.verify_token_async(token)
 
         if not user_id:
             await websocket.send_json({

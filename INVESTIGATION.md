@@ -1187,7 +1187,26 @@ finally:
 
 ---
 
-## P0-6 — `verify_id_token` is sync inside the WS auth path
+## P0-6 — `verify_id_token` is sync inside the WS auth path  ✅ FIXED
+
+**Status:** FIXED — added `AuthService.verify_token_async(token)` that
+dispatches the Firebase `verify_id_token` call onto the default thread
+pool via `asyncio.to_thread`. WS endpoint now uses the async variant.
+Removed the redundant second `verify_token` call inside
+`handler.handle_auth` (it trusts the caller-supplied user_id since the
+WS endpoint already verified). Net: AUTH cost dropped from 2 sync RPCs
+on the loop to 1 RPC on the thread pool.
+
+The sync `verify_token` method is retained for any non-async caller
+(currently none) and its docstring clearly warns that calling from a
+coroutine blocks the loop.
+
+**Verification:** in-memory test exercised dev-mode + bot-token
+short-circuit paths via `verify_token_async`. Both return the expected
+user_id without touching Firebase.
+
+**Original finding:**
+
 
 **Symptom:** Server-wide freeze of ~50–300 ms (longer when Firebase
 refreshes its signing-key set, ~once per hour) on every WebSocket

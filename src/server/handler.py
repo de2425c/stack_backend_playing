@@ -52,14 +52,14 @@ class MessageHandler:
         self._animation_complete_events: dict[str, asyncio.Event] = {}  # table_id -> Event
 
     async def handle_auth(self, user_id: str, token: str, protocol_version: int) -> dict:
-        """Handle AUTH message. Returns response dict."""
-        verified_user = self._auth.verify_token(token)
-        if verified_user is None or verified_user != user_id:
-            return ErrorMessage(
-                code=ErrorCode.UNAUTHORIZED,
-                message="Invalid token",
-            ).model_dump(mode="json")
+        """Handle AUTH message. Returns response dict.
 
+        Note: the WS endpoint has already verified the token before reaching
+        this method (and passed the verified user_id in). We trust the
+        caller-supplied user_id rather than re-running verify_id_token,
+        which would be a second sync Firebase RPC on the event loop's
+        critical path.
+        """
         # Check if user already at a table (reconnect)
         table_id = self._manager.get_table_for_user(user_id)
 

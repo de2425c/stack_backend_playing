@@ -4,6 +4,7 @@ Authentication service with Firebase Auth support.
 Supports both development mode (mock tokens) and production mode (Firebase).
 """
 
+import asyncio
 import os
 from typing import Optional
 
@@ -92,10 +93,16 @@ class AuthService:
 
     def verify_token(self, token: str) -> Optional[str]:
         """
-        Verify token and return user_id, or None if invalid.
+        Synchronous verify (for legacy / non-async callers).
 
-        In dev mode: accepts "user_XXX" tokens directly as user_id.
-        In production: verifies Firebase ID token.
+        Prefer :meth:`verify_token_async` from coroutines so the blocking
+        Firebase RPC doesn't sit on the event loop. Kept for backwards
+        compatibility — calling this from an async path will block the
+        loop for the duration of the Firebase round-trip (~50-300 ms,
+        longer when Firebase refreshes its signing-key set).
+
+        Dev mode: accepts "user_XXX" tokens directly as user_id.
+        Production: verifies Firebase ID token.
         """
         if not config.auth_enabled:
             # Dev mode: accept mock tokens
@@ -114,6 +121,44 @@ class AuthService:
 
         try:
             decoded = self._firebase_auth.verify_id_token(token)
+            user_id = decoded.get("uid")
+            logger.info("Auth successful", user_id=user_id)
+            return user_id
+        except self._firebase_auth.InvalidIdTokenError as e:
+            logger.warning(f"Invalid token: {e}")
+            return None
+        except self._firebase_auth.ExpiredIdTokenError:
+            logger.warning("Expired token")
+            return None
+        except Exception as e:
+            logger.error(f"Auth error: {e}")
+            return None
+
+    async def verify_token_async(self, token: str) -> Optional[str]:
+        """
+        Async-friendly verify.
+
+        Dev mode + bot tokens have no I/O so they short-circuit on the
+        event loop. Production Firebase verification dispatches the
+        blocking SDK call onto the default thread pool so the asyncio
+        loop keeps spinning.
+        """
+        if not config.auth_enabled:
+            if token.startswith("user_"):
+                return token
+            return None
+
+        if token.startswith("user_bot_"):
+            return token
+
+        if not self._firebase_auth:
+            logger.error("Firebase Auth not available")
+            return None
+
+        try:
+            decoded = await asyncio.to_thread(
+                self._firebase_auth.verify_id_token, token
+            )
             user_id = decoded.get("uid")
             logger.info("Auth successful", user_id=user_id)
             return user_id
