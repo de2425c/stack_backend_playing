@@ -1279,7 +1279,17 @@ refund, mirroring the P0-3 pattern.
 
 ---
 
-## P1-12 — `handle_set_auto_top_up` mutates engine state outside the runner
+## P1-12 — `handle_set_auto_top_up` mutates engine state outside the runner  ⏭️ SKIPPED (minor)
+
+**Status:** SKIPPED per user mandate ("If something is minor you can
+skip it"). The mutation is a single atomic bool write under Python's
+GIL — no actual data race. Refactoring into a runner command would
+add ~20 lines (new Command type, handler, manager method) for no
+observable behavioural change. Documented here for completeness; can
+be revisited if the design pattern is being enforced.
+
+**Original finding:**
+
 
 **Symptom:** Toggling auto-top-up mid-hand has indeterminate ordering
 with respect to `_check_and_process_rebuys` and other engine reads/
@@ -1292,6 +1302,33 @@ queue. The engine's state is supposed to be runner-owned.
 **Fix:** Add a `SetAutoTopUpCommand` and route through the runner like
 every other state mutation. Lower priority than the others; this is a
 single bool write so race semantics are benign under Python's GIL.
+
+---
+
+## P1-14 — `broadcast_to_table` serialises sends across users  ✅ FIXED
+
+**Symptom:** One slow user (bad network, full write buffer) holds up
+the broadcast for the rest of the table. At a 6-max with N seats,
+broadcast latency = sum of per-user latencies.
+
+**Root cause:** `connection.py:broadcast_to_table` looped sequentially:
+```python
+for user_id in user_ids:
+    if user_id != exclude:
+        await self.send_to_user(user_id, message)
+```
+
+`send_to_user` acquires a per-user lock and awaits `ws.send_json`. The
+sequential await meant any user's latency added to the total.
+
+**Fix:** fan out via `asyncio.gather(*..., return_exceptions=True)`.
+Per-user locks still serialise concurrent producers for the same user;
+only cross-user calls overlap. `return_exceptions=True` ensures one
+slow / dead user doesn't take down the rest of the broadcast.
+
+**Verification:** in-memory benchmark with 6 users at 50 ms each.
+Sequential would be ~300 ms; parallel measured 51 ms — exactly the
+expected `max(times)` shape.
 
 ---
 

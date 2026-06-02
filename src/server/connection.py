@@ -119,11 +119,22 @@ class ConnectionManager:
     async def broadcast_to_table(
         self, table_id: str, message: dict, exclude: Optional[str] = None
     ) -> None:
-        """Broadcast a message to all users at a table."""
+        """Broadcast a message to all users at a table.
+
+        Fans out sends via asyncio.gather so a single slow user's
+        per-user-lock contention does not hold up the broadcast for the
+        rest of the table. Each per-user send still goes through its own
+        asyncio.Lock so concurrent producers for the same user_id stay
+        serialised on the wire.
+        """
         user_ids = self._table_users.get(table_id, set()).copy()
-        for user_id in user_ids:
-            if user_id != exclude:
-                await self.send_to_user(user_id, message)
+        targets = [uid for uid in user_ids if uid != exclude]
+        if not targets:
+            return
+        await asyncio.gather(
+            *(self.send_to_user(uid, message) for uid in targets),
+            return_exceptions=True,
+        )
 
     def get_table_users(self, table_id: str) -> set[str]:
         """Get all user_ids at a table."""
