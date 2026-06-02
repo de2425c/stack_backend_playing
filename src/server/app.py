@@ -320,6 +320,98 @@ async def _duel_state_sweeper_loop() -> None:
 HAND_LOG_RETRY_INTERVAL_SECONDS = 60.0
 
 
+# Bot orphan sweeper interval.
+BOT_ORPHAN_SWEEP_INTERVAL_SECONDS = 60.0
+
+
+def _sweep_bot_orphans() -> int:
+    """Kill any openbot_client subprocess whose --table-id no longer maps
+    to a live table.
+
+    `_kill_orphan_bot_processes()` only runs at startup. If a subprocess
+    survives a missed cleanup (race with disconnect / partial bot-table
+    teardown), each one holds ~150-200 MB until the next restart. This
+    periodic sweep cross-checks live processes against ``manager._tables``
+    by parsing the ``--table-id <id>`` argument out of each command line
+    and SIGTERMs the strays.
+
+    Returns the number of processes killed.
+    """
+    if manager is None:
+        return 0
+    try:
+        result = subprocess.run(
+            ["pgrep", "-af", "openbot_client"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return 0
+
+        live_tables = set(manager._tables.keys())
+        killed = 0
+        for line in result.stdout.strip().split("\n"):
+            if not line:
+                continue
+            # pgrep -af → "<pid> <full command line>"
+            parts = line.split(None, 1)
+            if len(parts) < 2:
+                continue
+            try:
+                pid = int(parts[0])
+            except ValueError:
+                continue
+            cmd = parts[1]
+
+            # Extract --table-id <id>
+            tokens = cmd.split()
+            table_id: Optional[str] = None
+            for i, tok in enumerate(tokens):
+                if tok == "--table-id" and i + 1 < len(tokens):
+                    table_id = tokens[i + 1]
+                    break
+            if table_id is None:
+                # Can't tell which table — leave it alone rather than
+                # SIGTERM a process we don't understand.
+                continue
+            if table_id in live_tables:
+                continue
+
+            try:
+                os.kill(pid, signal.SIGTERM)
+                killed += 1
+                print(
+                    f"[BOT_SWEEP] Killed orphan bot pid={pid} "
+                    f"(table_id={table_id} not in live tables)",
+                    flush=True,
+                )
+            except (ProcessLookupError, PermissionError) as e:
+                print(f"[BOT_SWEEP] Couldn't kill pid={pid}: {e}", flush=True)
+        return killed
+    except Exception as e:
+        print(f"[BOT_SWEEP] Sweeper error: {e}", flush=True)
+        return 0
+
+
+async def _bot_orphan_sweeper_loop() -> None:
+    """Periodic loop running _sweep_bot_orphans every N seconds."""
+    print(
+        f"[BOT_SWEEP] Orphan sweeper started "
+        f"(interval={BOT_ORPHAN_SWEEP_INTERVAL_SECONDS}s)",
+        flush=True,
+    )
+    try:
+        while True:
+            await asyncio.sleep(BOT_ORPHAN_SWEEP_INTERVAL_SECONDS)
+            try:
+                await asyncio.to_thread(_sweep_bot_orphans)
+            except Exception as e:
+                print(f"[BOT_SWEEP] Iteration failed: {e}", flush=True)
+    except asyncio.CancelledError:
+        print("[BOT_SWEEP] Orphan sweeper stopped", flush=True)
+        raise
+
+
 async def _hand_log_retry_loop() -> None:
     """Drain the hand-logger retry queue periodically.
 
@@ -421,13 +513,15 @@ async def lifespan(app: FastAPI):
     sweeper_task = asyncio.create_task(_duel_state_sweeper_loop())
     heartbeat_task = asyncio.create_task(_heartbeat_reaper_loop())
     hand_log_retry_task = asyncio.create_task(_hand_log_retry_loop())
+    bot_orphan_task = asyncio.create_task(_bot_orphan_sweeper_loop())
 
     yield
 
     sweeper_task.cancel()
     heartbeat_task.cancel()
     hand_log_retry_task.cancel()
-    for t in (sweeper_task, heartbeat_task, hand_log_retry_task):
+    bot_orphan_task.cancel()
+    for t in (sweeper_task, heartbeat_task, hand_log_retry_task, bot_orphan_task):
         try:
             await t
         except (asyncio.CancelledError, Exception):

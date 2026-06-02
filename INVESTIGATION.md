@@ -887,7 +887,25 @@ Drop `self._running`; rely on `_task.cancel()`.
 
 ---
 
-## P2-4 — Bot subprocess lifecycle: orphan handler only runs at startup
+## P2-4 — Bot subprocess lifecycle: orphan handler only runs at startup  ✅ FIXED
+
+**Status:** FIXED — added `_sweep_bot_orphans()` (called from
+`_bot_orphan_sweeper_loop()` every 60 s via `asyncio.to_thread`). The
+sweeper invokes `pgrep -af openbot_client`, parses each match's
+`--table-id <id>` argument, and SIGTERMs the process if `table_id` is
+not in `manager._tables`. Processes whose `--table-id` cannot be
+parsed are left alone (defensive — don't kill what we don't
+understand).
+
+Wired into the lifespan alongside the existing sweeper, heartbeat
+reaper, and (new in P2-1) hand-log retry drain.
+
+**Verification:** parses cleanly. Would need a server-side run to
+confirm pgrep parsing handles real openbot command lines, but the
+parsing is a straightforward split on `--table-id`.
+
+**Original finding:**
+
 
 **Symptom (server):** If a bot subprocess hangs (CFR-related memory pressure, policy load hang, etc.) and `_cleanup_bot_table`'s `proc.terminate()` is somehow not invoked (race with `_reconcile_duel_state`), the process stays around indefinitely. Each orphan holds ~200 MB.
 
