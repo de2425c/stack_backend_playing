@@ -397,8 +397,14 @@ class TableManager:
         """
         Attempt auto-rebuy for a bust player.
 
-        Tops up TO $200 (20000 cents), not adds $200.
+        Tops up TO 100bb of the table's big blind, not adds 100bb.
         Returns (rebuy_amount, new_stack) or None if rebuy failed.
+
+        Financial invariant: if `deduct_balance` succeeds but the engine
+        seat update fails (cancellation, KeyError, …) the user has paid
+        but their stack didn't change. The try/finally below refunds
+        best-effort via `asyncio.shield`, mirroring the P0-3 pattern
+        in `add_player`.
         """
         # Skip bots - they don't need real chip balance
         if not self._firestore or user_id.startswith(("bot_", "user_bot_")):
@@ -420,18 +426,46 @@ class TableManager:
 
         rebuy_amount = max_stack - current_chips
 
+        debited_cents = 0
+        applied = False
         try:
             balance = await self._firestore.get_user_balance(user_id)
             if balance < rebuy_amount:
                 return None
 
             await self._firestore.deduct_balance(user_id, rebuy_amount)
+            debited_cents = rebuy_amount
+
             seat_state.chips = max_stack
+            applied = True
             print(f"[REBUY] Topped up {user_id} by {rebuy_amount} cents to {max_stack}")
             return (rebuy_amount, max_stack)
         except Exception as e:
             print(f"[REBUY] Failed for {user_id}: {e}")
             return None
+        finally:
+            if debited_cents > 0 and not applied:
+                try:
+                    await asyncio.shield(
+                        self._firestore.add_balance(user_id, debited_cents)
+                    )
+                    logger.warning(
+                        "[REBUY] Refunded %d cents to %s after rebuy apply failure",
+                        debited_cents, user_id,
+                    )
+                except asyncio.CancelledError:
+                    logger.warning(
+                        "[REBUY] Outer task cancelled during refund of %d cents to %s; "
+                        "shielded refund task continues in background",
+                        debited_cents, user_id,
+                    )
+                    raise
+                except Exception as refund_err:
+                    logger.critical(
+                        "[REBUY][CRITICAL] FAILED to refund %d cents to %s "
+                        "after rebuy apply failure: %r",
+                        debited_cents, user_id, refund_err,
+                    )
 
     async def request_topup(self, user_id: str) -> tuple[int, int]:
         """
@@ -439,6 +473,12 @@ class TableManager:
 
         Returns (topup_amount, projected_new_stack).
         Raises ValueError if user not at table, already at max, or insufficient balance.
+
+        Financial invariant: if `deduct_balance` succeeds but the engine
+        `pending_topup` update fails (cancellation between the await and
+        the assignment), the user has paid but their queued top-up is
+        lost. The try/finally below refunds best-effort via
+        `asyncio.shield`, mirroring the P0-3 pattern in `add_player`.
         """
         table_id = self._user_tables.get(user_id)
         if table_id is None:
@@ -466,19 +506,47 @@ class TableManager:
 
         topup_amount = max_stack - current_effective
 
-        # Check and deduct wallet balance
-        if self._firestore and not user_id.startswith(("bot_", "user_bot_")):
-            balance = await self._firestore.get_user_balance(user_id)
-            if balance < topup_amount:
-                raise ValueError(f"INSUFFICIENT_BALANCE: {balance} cents < {topup_amount} cents")
-            await self._firestore.deduct_balance(user_id, topup_amount)
+        # Check and deduct wallet balance. Track for refund-on-fail.
+        debited_cents = 0
+        applied = False
+        try:
+            if self._firestore and not user_id.startswith(("bot_", "user_bot_")):
+                balance = await self._firestore.get_user_balance(user_id)
+                if balance < topup_amount:
+                    raise ValueError(f"INSUFFICIENT_BALANCE: {balance} cents < {topup_amount} cents")
+                await self._firestore.deduct_balance(user_id, topup_amount)
+                debited_cents = topup_amount
 
-        # Queue the pending top-up (applied at next hand start)
-        seat_state.pending_topup += topup_amount
-        new_stack = seat_state.chips + seat_state.pending_topup
+            # Queue the pending top-up (applied at next hand start)
+            seat_state.pending_topup += topup_amount
+            new_stack = seat_state.chips + seat_state.pending_topup
+            applied = True
 
-        print(f"[TOPUP] Queued {topup_amount} cents for {user_id}, new projected stack: {new_stack}")
-        return (topup_amount, new_stack)
+            print(f"[TOPUP] Queued {topup_amount} cents for {user_id}, new projected stack: {new_stack}")
+            return (topup_amount, new_stack)
+        finally:
+            if debited_cents > 0 and not applied:
+                try:
+                    await asyncio.shield(
+                        self._firestore.add_balance(user_id, debited_cents)
+                    )
+                    logger.warning(
+                        "[TOPUP] Refunded %d cents to %s after queue failure",
+                        debited_cents, user_id,
+                    )
+                except asyncio.CancelledError:
+                    logger.warning(
+                        "[TOPUP] Outer task cancelled during refund of %d cents to %s; "
+                        "shielded refund task continues in background",
+                        debited_cents, user_id,
+                    )
+                    raise
+                except Exception as refund_err:
+                    logger.critical(
+                        "[TOPUP][CRITICAL] FAILED to refund %d cents to %s "
+                        "after queue failure: %r",
+                        debited_cents, user_id, refund_err,
+                    )
 
     async def shutdown(self) -> None:
         """Stop all table runners."""

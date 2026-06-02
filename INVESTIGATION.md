@@ -1238,7 +1238,26 @@ Same problem-class as P0-1 (sync Firestore) but in the auth path.
 
 ---
 
-## P1-11 — `try_rebuy` and `request_topup` debit wallets without refund-on-fail
+## P1-11 — `try_rebuy` and `request_topup` debit wallets without refund-on-fail  ✅ FIXED
+
+**Status:** FIXED — added the same try/finally + `asyncio.shield`
+refund pattern from P0-3 to:
+- `manager.try_rebuy` (auto-rebuy from `_check_and_process_rebuys`)
+- `manager.request_topup` (manual top-up via TOP_UP_REQUEST)
+
+In both, `debited_cents` is set after a successful `deduct_balance`
+and `applied` is set only after the engine state assignment runs. If
+control leaves the function with `debited_cents > 0 and not applied`,
+the finally refunds the wallet via `asyncio.shield`.
+
+**Verification:** in-memory smoke for the happy path of `request_topup`:
+buy in at $100, top up to $200, wallet decreases by exactly $100. The
+finally branch is exercised only on cancellation/exception, which the
+sync test cannot easily simulate, but the code mirrors P0-3 which has
+a passing failure-path test.
+
+**Original finding:**
+
 
 **Symptom:** During cancellation between `deduct_balance` and the
 `seat_state.chips`/`pending_topup` mutation, money debits but doesn't
