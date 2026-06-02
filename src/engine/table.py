@@ -557,13 +557,26 @@ class PokerTableEngine:
         )]
 
     def is_action_stale(self, hand_id: str) -> bool:
-        """Check if an action is for a hand that just ended (race condition)."""
-        print(f"[STALE CHECK] hand_id={hand_id} status={self._status} last_completed={self._last_completed_hand_id} current={self._hand_id}")
-        if self._status == TableStatus.RUNNING:
-            return False  # Hand in progress, not stale
+        """Check if an action is for a hand that no longer accepts it.
 
-        # Action is stale if it matches the hand that just ended
-        return hand_id == self._last_completed_hand_id
+        Previously returned False whenever status==RUNNING — meaning a
+        stale action from hand A could be applied to a different
+        currently-running hand B if the actor seat happened to match
+        (P1-12). Now we also reject when the action's hand_id doesn't
+        match the running hand.
+        """
+        print(f"[STALE CHECK] hand_id={hand_id} status={self._status} last_completed={self._last_completed_hand_id} current={self._hand_id}")
+
+        # Action targets a hand that already ended — stale.
+        if hand_id == self._last_completed_hand_id and self._status != TableStatus.RUNNING:
+            return True
+
+        # If a new hand is running, the action must target IT.
+        if self._status == TableStatus.RUNNING:
+            return self._hand_id is not None and hand_id != self._hand_id
+
+        # Not running and not the just-completed hand: stale.
+        return True
 
     def _finalize_hand(self) -> list:
         """
