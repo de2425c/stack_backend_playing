@@ -919,7 +919,23 @@ parsing is a straightforward split on `--table-id`.
 
 ---
 
-## P2-5 — `add_player` can leave a fresh empty table behind on join failure
+## P2-5 — `add_player` can leave a fresh empty table behind on join failure  ✅ FIXED
+
+**Status:** FIXED — added a `created_table_id` marker to track tables
+created in this call (vs. ones we found already populated). On
+join-failure (no `seated`), the `finally` block pops it from
+`_tables` and calls `await runner.stop()` so the runner task is
+cancelled and the queue released.
+
+**Verification:** in-memory test monkeypatches `TableRunner._handle_join`
+to always raise. Calls `add_player` with no explicit `table_id` so a
+new table is created. After the failure: the new table is **not**
+left behind (`new_tables` is the empty set) and Alice's wallet is
+correctly refunded. Confirms the zombie-cleanup and refund logic
+coexist correctly.
+
+**Original finding:**
+
 
 **Symptom (server):** Slow buildup of zombie `TableRunner`s with running tasks; each takes a small amount of memory and CPU (100ms polling).
 

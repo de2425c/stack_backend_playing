@@ -157,6 +157,10 @@ class TableManager:
 
         debited_cents = 0
         seated = False
+        # Tracks the table_id we created in this call (vs. one we found
+        # already populated). If the join fails, we tear it down so the
+        # runner task + empty queue don't linger.
+        created_table_id: Optional[str] = None
         is_real_user = (
             self._firestore is not None
             and not user_id.startswith(("bot_", "user_bot_"))
@@ -182,6 +186,7 @@ class TableManager:
                 runner = self._find_table_with_seats(stake_id)
                 if runner is None:
                     table_id = self.create_table(stake_id)
+                    created_table_id = table_id
                     runner = self._tables[table_id]
 
             # Submit join command
@@ -200,6 +205,24 @@ class TableManager:
 
             return (runner.table_id, seat)
         finally:
+            # Tear down the table we created if the join failed, so the
+            # runner task + empty queue don't linger forever as a zombie.
+            if created_table_id is not None and not seated:
+                runner_to_stop = self._tables.pop(created_table_id, None)
+                if runner_to_stop is not None:
+                    try:
+                        await runner_to_stop.stop()
+                    except Exception as stop_err:
+                        logger.warning(
+                            "[ADD_PLAYER] Error stopping zombie table %s: %r",
+                            created_table_id, stop_err,
+                        )
+                    else:
+                        logger.info(
+                            "[ADD_PLAYER] Stopped zombie table %s after join failure",
+                            created_table_id,
+                        )
+
             if debited_cents > 0 and not seated:
                 # Refund best-effort. Shield from outer-task cancellation so
                 # the wallet credit always lands; if the Firestore call itself
