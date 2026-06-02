@@ -780,7 +780,19 @@ Bounded by `maxReconnectAttempts = 5`, so worst case 5-deep. Not critical, but c
 
 ---
 
-## P2-1 — Hand-logger retry queue never drained
+## P2-1 — Hand-logger retry queue never drained  ✅ FIXED
+
+**Status:** FIXED — added `_hand_log_retry_loop()` background task to
+`app.py` lifespan that calls `hand_logger.retry_failed_writes()` every
+60 s. If there's nothing to drain, it no-ops. If a flake stranded
+hands earlier, they get reattempted on the next interval.
+
+**Verification:** parses cleanly; the loop is wired into the lifespan
+along with the existing sweeper and heartbeat reaper, and tears down
+the same way.
+
+**Original finding:**
+
 
 **Symptom (server):** If Firestore intermittently fails, `_retry_queue` grows unbounded; OOM after long uptime.
 

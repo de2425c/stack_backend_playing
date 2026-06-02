@@ -314,6 +314,48 @@ async def _duel_state_sweeper_loop() -> None:
         raise
 
 
+# Hand-logger retry drain interval. Without this, the in-memory retry queue
+# in HandLogger grew unbounded under Firestore flakes since
+# retry_failed_writes() was never called from anywhere.
+HAND_LOG_RETRY_INTERVAL_SECONDS = 60.0
+
+
+async def _hand_log_retry_loop() -> None:
+    """Drain the hand-logger retry queue periodically.
+
+    HandLogger.log_hand() schedules its Firestore write as an asyncio.Task and
+    appends failed writes to _retry_queue. Previously no code called
+    retry_failed_writes(), so any Firestore flake stranded the hand log forever
+    and the queue grew with every fresh failure. This loop runs the drain
+    so a flake heals on its own once Firestore recovers.
+    """
+    print(
+        f"[HAND_LOG][RETRY] Drain loop started "
+        f"(interval={HAND_LOG_RETRY_INTERVAL_SECONDS}s)",
+        flush=True,
+    )
+    try:
+        while True:
+            await asyncio.sleep(HAND_LOG_RETRY_INTERVAL_SECONDS)
+            try:
+                if hand_logger is None:
+                    continue
+                qsize = hand_logger.retry_queue_size
+                if qsize == 0:
+                    continue
+                succeeded = await hand_logger.retry_failed_writes()
+                print(
+                    f"[HAND_LOG][RETRY] Drained {succeeded}/{qsize} pending writes "
+                    f"(remaining={hand_logger.retry_queue_size})",
+                    flush=True,
+                )
+            except Exception as e:
+                print(f"[HAND_LOG][RETRY] Iteration failed: {e}", flush=True)
+    except asyncio.CancelledError:
+        print("[HAND_LOG][RETRY] Drain loop stopped", flush=True)
+        raise
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan - initialize and cleanup resources."""
@@ -378,12 +420,14 @@ async def lifespan(app: FastAPI):
 
     sweeper_task = asyncio.create_task(_duel_state_sweeper_loop())
     heartbeat_task = asyncio.create_task(_heartbeat_reaper_loop())
+    hand_log_retry_task = asyncio.create_task(_hand_log_retry_loop())
 
     yield
 
     sweeper_task.cancel()
     heartbeat_task.cancel()
-    for t in (sweeper_task, heartbeat_task):
+    hand_log_retry_task.cancel()
+    for t in (sweeper_task, heartbeat_task, hand_log_retry_task):
         try:
             await t
         except (asyncio.CancelledError, Exception):
