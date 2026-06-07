@@ -2214,13 +2214,20 @@ async def _start_duel_match_with_bot(match: DuelMatch) -> None:
             break
         await asyncio.sleep(0.1)
 
-    # The bot subprocess seats itself with avatar_url=None (it joins via the
-    # normal flow). Stamp its assigned cosmetic avatar onto the seat so the
-    # human's snapshot — and every later snapshot — carries the bot's face.
+    # The bot subprocess seats itself with avatar_url=None AND a different
+    # user_id than our persona id (the multi-bot openbot client uses
+    # "user_bot_<table>_<i>"). In a HU duel there are exactly two seats, so
+    # stamp the assigned cosmetic avatar onto whichever occupied seat isn't
+    # the human — that's the bot. This makes the human's snapshot (and every
+    # later snapshot) carry the bot's face.
     runner = manager._tables.get(table_id)
     if runner and bot_avatar:
         for seat_state in runner._engine._seats:
-            if seat_state and seat_state.player and seat_state.player.user_id == bot_user_id:
+            if (
+                seat_state
+                and seat_state.player
+                and seat_state.player.user_id != match.player1_id
+            ):
                 seat_state.player.avatar_url = bot_avatar
                 break
 
