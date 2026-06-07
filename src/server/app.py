@@ -1770,6 +1770,46 @@ def _get_duel_buy_in(stack_type: str) -> int:
         raise ValueError(f"Invalid stack type: {stack_type}")
 
 
+async def _evict_user_from_stale_table(user_id: str, table_id: str) -> None:
+    """Tear down a table a user is stranded at after a partial duel cleanup.
+
+    `_complete_duel_match` clears `_user_duels` up front, but a failure before
+    its table teardown can leave the seat (and the bot) behind. That residue
+    keeps `get_table_for_user` returning the table, which blocks the user's
+    next JOIN_DUEL with "already_at_table" until a process restart. This
+    scrubs the table, its bot subprocess, and every seated player's bookkeeping.
+    """
+    # Kill any bot subprocess bound to the table.
+    for _bid, proc in _bot_processes.pop(table_id, []):
+        try:
+            proc.terminate()
+            await asyncio.wait_for(proc.wait(), timeout=2.0)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+
+    # Drop every seated user's table mapping (human + any bots) + connection.
+    for uid in [u for u, t in list(manager._user_tables.items()) if t == table_id]:
+        manager._user_tables.pop(uid, None)
+        connections.leave_table(uid)
+        _user_duels.pop(uid, None)
+
+    # Stop and delete the table runner.
+    runner = manager._tables.pop(table_id, None)
+    if runner:
+        try:
+            await runner.stop()
+        except Exception:
+            pass
+
+    # Drop any dangling duel bookkeeping for this table / user.
+    _active_duels.pop(table_id, None)
+    manager._user_tables.pop(user_id, None)
+    _user_duels.pop(user_id, None)
+
+
 async def _join_duel_queue(
     user_id: str,
     entry_fee_cents: int,
@@ -1811,13 +1851,32 @@ async def _join_duel_queue(
             "message": "Already in a duel or duel queue",
         }
 
-    # Check if user is at a regular table
-    if manager.get_table_for_user(user_id):
-        return {
-            "type": "ERROR",
-            "code": "already_at_table",
-            "message": "Already at a table. Leave first before joining a duel.",
-        }
+    # Check if user is parked at a table. A live duel/cash table must be left
+    # first — but a *stale duel* table (still seated yet no longer tracked in
+    # _active_duels, the residue of a partial forfeit cleanup) would otherwise
+    # block this user from duelling again forever. Self-heal that case.
+    existing_table = manager.get_table_for_user(user_id)
+    if existing_table:
+        runner = manager._tables.get(existing_table)
+        stake_id = runner._config.stake_id if runner else None
+        is_stale_duel = (
+            existing_table not in _active_duels
+            and isinstance(stake_id, str)
+            and stake_id.startswith("duel")
+        )
+        if is_stale_duel:
+            print(
+                f"[DUEL] {user_id} stranded at stale duel table {existing_table}; "
+                f"evicting before new duel",
+                flush=True,
+            )
+            await _evict_user_from_stale_table(user_id, existing_table)
+        else:
+            return {
+                "type": "ERROR",
+                "code": "already_at_table",
+                "message": "Already at a table. Leave first before joining a duel.",
+            }
 
     # Check and deduct entry fee
     if firestore and not user_id.startswith(("bot_", "user_bot_")):
@@ -2450,8 +2509,10 @@ async def _complete_duel_match(table_id: str, winner_id: str) -> None:
 
     # Release bot persona back to pool
     if match.player2_is_bot:
-        persona_pool = get_persona_pool()
-        persona_pool.release_persona(match.player2_id)
+        try:
+            get_persona_pool().release_persona(match.player2_id)
+        except Exception as e:
+            print(f"[DUEL] release_persona failed: {e}", flush=True)
 
     # Clean up bot processes if any
     if table_id in _bot_processes:
@@ -2861,8 +2922,25 @@ async def websocket_endpoint(websocket: WebSocket):
                     await connections.send_to_user(user_id, response)
 
             elif msg_type == "LEAVE_TABLE":
-                response = await handler.handle_leave_table(user_id)
-                await connections.send_to_user(user_id, response)
+                # An explicit leave during an active duel is a forfeit: tear the
+                # match down now (remove both players, kill the bot, clear duel
+                # state) instead of falling through to the generic table-leave,
+                # which would leave _active_duels/_user_duels dangling and block
+                # the next JOIN_DUEL. _complete_duel_match sends DUEL_ENDED.
+                duel_table_id = manager.get_table_for_user(user_id)
+                if duel_table_id and duel_table_id in _active_duels:
+                    _match = _active_duels[duel_table_id]
+                    opponent_id = (
+                        _match.player2_id if _match.player1_id == user_id
+                        else _match.player1_id
+                    )
+                    await _complete_duel_match(duel_table_id, winner_id=opponent_id)
+                elif user_id in _user_duels:
+                    # Still in the duel queue (not yet seated) — cancel + refund.
+                    await connections.send_to_user(user_id, await _cancel_duel_queue(user_id))
+                else:
+                    response = await handler.handle_leave_table(user_id)
+                    await connections.send_to_user(user_id, response)
 
             elif msg_type == "NEXT_HAND":
                 response = await handler.handle_next_hand(user_id)
