@@ -5,9 +5,25 @@ Bot personas are stored in the `users` collection with a `bot_` prefix on the ID
 making them indistinguishable from real users to the client.
 """
 
+import hashlib
 import random
 from datetime import datetime, timedelta
 from typing import Optional
+
+# Base cosmetic avatar ids from the iOS CosmeticCatalog (8 free "Classic"
+# personas — always renderable on every client). Bots are assigned one
+# deterministically so a given persona always wears the same face.
+BOT_AVATAR_IDS = ["kai", "zane", "rune", "dex", "lola", "suki", "priya", "zara"]
+
+
+def avatar_for_username(username: str) -> str:
+    """Map a bot persona to a stable cosmetics-system avatar id.
+
+    Uses md5 (not Python's salted hash()) so the assignment is identical
+    across processes and restarts.
+    """
+    digest = hashlib.md5(username.encode("utf-8")).hexdigest()
+    return BOT_AVATAR_IDS[int(digest, 16) % len(BOT_AVATAR_IDS)]
 
 # Pool of 70 realistic bot personas
 # Mix of: casual names, poker-themed handles, gamer-style names
@@ -249,6 +265,7 @@ class BotPersonaPool:
             "persona_id": chosen["persona_id"],
             "username": chosen["username"],
             "displayName": chosen["displayName"],
+            "avatar": avatar_for_username(chosen["username"]),
         }
 
     def release_persona(self, persona_id: str) -> None:

@@ -37,7 +37,7 @@ from .glicko import (
     INITIAL_RATING,
     INITIAL_RD,
 )
-from .bot_personas import get_persona_pool, BotPersonaPool
+from .bot_personas import get_persona_pool, BotPersonaPool, avatar_for_username
 
 
 # Global instances (initialized in lifespan)
@@ -77,10 +77,12 @@ class DuelMatch:
     player1_id: str
     player1_display_name: str
     player1_entry_fee_cents: int
+    player1_avatar: Optional[str] = None  # equipped cosmetic avatar id
     player2_id: Optional[str] = None
     player2_display_name: Optional[str] = None
     player2_entry_fee_cents: Optional[int] = None
     player2_is_bot: bool = False
+    player2_avatar: Optional[str] = None  # equipped cosmetic avatar id (or bot's assigned avatar)
     winner_id: Optional[str] = None
     # widen_level: 0 = strict (same fee only), 1 = any fee within stack_type
     widen_level: int = 0
@@ -1775,6 +1777,7 @@ async def _join_duel_queue(
     display_name: str,
     websocket: WebSocket,
     challenge_id: Optional[str] = None,
+    avatar: Optional[str] = None,
 ) -> Optional[dict]:
     """
     Handle JOIN_DUEL request.
@@ -1850,6 +1853,7 @@ async def _join_duel_queue(
         waiting_match.player2_display_name = display_name
         waiting_match.player2_entry_fee_cents = entry_fee_cents
         waiting_match.player2_is_bot = False
+        waiting_match.player2_avatar = avatar
         waiting_match.status = "in_progress"
 
         if waiting_match.player1_entry_fee_cents != entry_fee_cents:
@@ -1878,6 +1882,7 @@ async def _join_duel_queue(
         player1_id=user_id,
         player1_display_name=display_name,
         player1_entry_fee_cents=entry_fee_cents,
+        player1_avatar=avatar,
     )
 
     # Track user
@@ -1973,7 +1978,7 @@ async def _start_duel_match(match: DuelMatch, player2_websocket: WebSocket) -> N
     player1 = PlayerIdentity(
         user_id=match.player1_id,
         display_name=match.player1_display_name,
-        avatar_url=None,
+        avatar_url=match.player1_avatar,
     )
     buy_in = Chips(amount=buy_in_cents)
 
@@ -1986,7 +1991,7 @@ async def _start_duel_match(match: DuelMatch, player2_websocket: WebSocket) -> N
     player2 = PlayerIdentity(
         user_id=match.player2_id,
         display_name=match.player2_display_name,
-        avatar_url=None,
+        avatar_url=match.player2_avatar,
     )
 
     _, seat2 = await manager.add_player(
@@ -2018,6 +2023,7 @@ async def _start_duel_match(match: DuelMatch, player2_websocket: WebSocket) -> N
         "opponent_rating": p2_rating,
         "opponent_wins": p2_wins,
         "opponent_losses": p2_losses,
+        "opponent_avatar": match.player2_avatar,
     })
 
     await connections.send_to_user(match.player2_id, {
@@ -2028,6 +2034,7 @@ async def _start_duel_match(match: DuelMatch, player2_websocket: WebSocket) -> N
         "opponent_rating": p1_rating,
         "opponent_wins": p1_wins,
         "opponent_losses": p1_losses,
+        "opponent_avatar": match.player1_avatar,
     })
 
     # Send TABLE_SNAPSHOT to both
@@ -2078,16 +2085,19 @@ async def _start_duel_match_with_bot(match: DuelMatch) -> None:
     if persona:
         bot_user_id = persona["persona_id"]
         bot_display_name = persona["username"]  # Use username, not displayName
+        bot_avatar = persona.get("avatar")
         print(f"[DUEL] Using bot persona: {bot_display_name} ({bot_user_id})", flush=True)
     else:
         # Fallback if all personas in use
         bot_user_id = f"bot_duel_{match.match_id[:8]}"
         bot_display_name = "duelbot"
+        bot_avatar = avatar_for_username(bot_display_name)
         print(f"[DUEL] All personas in use, using fallback: {bot_display_name}", flush=True)
 
     match.player2_id = bot_user_id
     match.player2_display_name = bot_display_name
     match.player2_is_bot = True
+    match.player2_avatar = bot_avatar
     # Bot matches the human's fee — no cross-stake P&L on bot fills.
     match.player2_entry_fee_cents = match.player1_entry_fee_cents
 
@@ -2098,7 +2108,7 @@ async def _start_duel_match_with_bot(match: DuelMatch) -> None:
     player1 = PlayerIdentity(
         user_id=match.player1_id,
         display_name=match.player1_display_name,
-        avatar_url=None,
+        avatar_url=match.player1_avatar,
     )
     buy_in = Chips(amount=buy_in_cents)
 
@@ -2125,6 +2135,7 @@ async def _start_duel_match_with_bot(match: DuelMatch) -> None:
         "opponent_rating": bot_rating,
         "opponent_wins": bot_wins,
         "opponent_losses": bot_losses,
+        "opponent_avatar": bot_avatar,
     })
 
     # Spawn bot process
@@ -2143,6 +2154,16 @@ async def _start_duel_match_with_bot(match: DuelMatch) -> None:
         if runner and runner.player_count >= 2:
             break
         await asyncio.sleep(0.1)
+
+    # The bot subprocess seats itself with avatar_url=None (it joins via the
+    # normal flow). Stamp its assigned cosmetic avatar onto the seat so the
+    # human's snapshot — and every later snapshot — carries the bot's face.
+    runner = manager._tables.get(table_id)
+    if runner and bot_avatar:
+        for seat_state in runner._engine._seats:
+            if seat_state and seat_state.player and seat_state.player.user_id == bot_user_id:
+                seat_state.player.avatar_url = bot_avatar
+                break
 
     # Send TABLE_SNAPSHOT to player 1
     snapshot1 = await manager.get_snapshot(match.player1_id)
@@ -2818,6 +2839,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     display_name=data.get("display_name", "Player"),
                     websocket=websocket,
                     challenge_id=data.get("challenge_id"),
+                    avatar=data.get("avatar"),
                 )
                 if error:
                     await connections.send_to_user(user_id, error)
