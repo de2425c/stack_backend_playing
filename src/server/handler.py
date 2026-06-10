@@ -4,6 +4,7 @@ Message handler for WebSocket protocol.
 Routes client messages to TableManager and orchestrates broadcasts.
 """
 
+import os
 import time
 from typing import Optional
 
@@ -28,6 +29,36 @@ from .auth import AuthService
 if TYPE_CHECKING:
     from .timer import ActionTimerService, PendingAction
     from ..session import SessionTracker
+
+
+# --- Hole-card deal animation pacing ----------------------------------------
+# The iOS client plays a preflop hole-card deal animation when a new hand's
+# TABLE_SNAPSHOT arrives (see stackpoker `DeckView.swift` -> `DealTiming`).
+# Until that animation finishes the table shouldn't accept action: otherwise
+# the hero's action buttons pop up and bots (separate WS clients prompted by
+# ACTION_REQUEST) fold/act over the cards still being dealt. We defer the
+# FIRST action request of each hand by the deal window so neither happens.
+#
+# Keep these in sync with DealTiming. Deal order goes around the table twice,
+# one card per seat per pass (opponents then hero), so with `n` opponents the
+# last card starts at slot (2n + 1).
+_DEAL_PER_CARD = 0.14          # DealTiming.perCard
+_DEAL_SPRING_RESPONSE = 0.44   # DealTiming.springResponse (last card settle)
+_DEAL_DECK_HOLD = 0.16         # DealTiming.deckHold (deck lingers, then crossfades to pot)
+
+# Scales the deal delay. Prod tuning knob + lets tests run without the wait
+# (STACK_DEAL_DELAY_SCALE=0 → action requests fire synchronously as before).
+_DEAL_DELAY_SCALE = float(os.environ.get("STACK_DEAL_DELAY_SCALE", "1.0"))
+
+
+def _deal_animation_seconds(num_players_in_hand: int) -> float:
+    """Seconds the client spends dealing hole cards for a hand with this many
+    seated players. Mirrors DealTiming.totalDuration + deckHold."""
+    if _DEAL_DELAY_SCALE <= 0:
+        return 0.0
+    n = max(1, num_players_in_hand - 1)  # opponents from the hero's view
+    last_card_start = float(2 * n + 1) * _DEAL_PER_CARD
+    return (last_card_start + _DEAL_SPRING_RESPONSE + _DEAL_DECK_HOLD) * _DEAL_DELAY_SCALE
 
 
 class MessageHandler:
@@ -520,7 +551,19 @@ class MessageHandler:
                     actor_window_seconds = cfg.bot_early_street_timeout_seconds
                 else:
                     actor_window_seconds = cfg.action_timeout_seconds
-                actor_expires_at_ms = int(time.time() * 1000) + actor_window_seconds * 1000
+                # On hand_start the actor isn't prompted until the deal
+                # animation finishes (see _dispatch_actor_request_after_deal),
+                # so push the deadline out by that window — otherwise opponent
+                # clients render a timer ring that's already ~1-2s into the
+                # clock before the actor can even act.
+                deal_offset_ms = 0
+                if is_hand_start:
+                    deal_offset_ms = int(
+                        _deal_animation_seconds(len(runner._engine._active_seat_indices)) * 1000
+                    )
+                actor_expires_at_ms = (
+                    int(time.time() * 1000) + deal_offset_ms + actor_window_seconds * 1000
+                )
 
         # Build STATE_DELTA
         delta = StateDeltaMessage(
@@ -589,10 +632,15 @@ class MessageHandler:
                 # Always send the STATE_DELTA (event stream).
                 await self._connections.send_to_user(user_id, delta_dict)
 
-                # Check if this user is the actor and send ACTION_REQUEST
+                # Check if this user is the actor and send ACTION_REQUEST.
+                # On hand_start we DON'T prompt here — the first action of the
+                # hand is deferred until the client's deal animation finishes
+                # (see the _dispatch_actor_request_after_deal task below), so
+                # neither the hero's buttons nor the bots act over the deal.
                 actor_seat = user_snapshot.hand.actor_seat if user_snapshot.hand else None
                 your_seat = user_snapshot.your_seat
-                if (user_snapshot.hand and
+                if (not is_hand_start and
+                    user_snapshot.hand and
                     actor_seat is not None and
                     actor_seat == your_seat):
                     # This user needs to act - send ACTION_REQUEST
@@ -600,6 +648,18 @@ class MessageHandler:
                     await self._send_action_request(user_id, user_snapshot)
             except Exception as e:
                 print(f"[BROADCAST] Error sending to {user_id}: {e}", flush=True)
+
+        # Hand start: defer the first action request until the deal animation
+        # has played on the client. Scheduled as a background task so we don't
+        # block the caller's WS message loop for the deal window.
+        if is_hand_start:
+            delay = _deal_animation_seconds(
+                len(self._manager._tables[table_id]._engine._active_seat_indices)
+            ) if table_id in self._manager._tables else _deal_animation_seconds(2)
+            asyncio.create_task(
+                self._dispatch_actor_request_after_deal(table_id, hand_id, delay)
+            )
+            return
 
         # Safety net: ensure the current actor has an ACTION_REQUEST and timer
         # This catches cases where the broadcast loop failed for the actor
@@ -733,6 +793,45 @@ class MessageHandler:
             # User may no longer be the actor (race condition) - that's ok
             print(f"[TIMER_REG] Exception for {user_id[:20]}...: {e}", flush=True)
             pass
+
+    async def _dispatch_actor_request_after_deal(
+        self, table_id: str, hand_id: Optional[str], delay: float
+    ) -> None:
+        """Prompt the hand's first actor once the client deal animation is done.
+
+        Deferred from `_broadcast_events` on hand_start. Sleeping here rather
+        than in the broadcast path keeps the caller's WS message loop responsive
+        during the ~1-2s deal. Re-validates table + hand on wake so a hand that
+        resolved on the blinds (everyone folded preflop) or a torn-down table
+        never gets a stale prompt.
+        """
+        try:
+            await asyncio.sleep(delay)
+        except asyncio.CancelledError:
+            return
+
+        runner = self._manager._tables.get(table_id)
+        if not runner or runner._engine._status.value != "running":
+            return
+
+        # Still the same hand we dealt? (A fold-to-blinds resolution or a new
+        # hand would have moved _hand_id on.)
+        current_hand_id = getattr(runner._engine, "_hand_id", None)
+        if hand_id is not None and current_hand_id is not None and current_hand_id != hand_id:
+            return
+
+        actor_seat = runner._engine.get_actor_seat()
+        if actor_seat is None:
+            return
+
+        for uid, seat in runner._user_seats.items():
+            if seat == actor_seat:
+                try:
+                    snapshot = await self._manager.get_snapshot(uid)
+                    await self._send_action_request(uid, snapshot)
+                except Exception as e:
+                    print(f"[DEAL_DELAY] Error prompting actor {uid[:20]}...: {e}", flush=True)
+                break
 
     async def _check_duel_bust(self, table_id: str) -> bool:
         """Check for bust player in duel mode. Returns True if duel ended."""

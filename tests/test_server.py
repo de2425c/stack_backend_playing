@@ -9,6 +9,17 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.server.app import app
+from src.server import handler as _handler
+
+
+@pytest.fixture(autouse=True)
+def _no_deal_delay():
+    """Neutralize the hand-start deal-animation delay so action requests fire
+    synchronously (these tests assert protocol ordering, not deal-timing UX)."""
+    prev = _handler._DEAL_DELAY_SCALE
+    _handler._DEAL_DELAY_SCALE = 0.0
+    yield
+    _handler._DEAL_DELAY_SCALE = prev
 
 
 @pytest.fixture
