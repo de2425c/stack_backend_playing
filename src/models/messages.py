@@ -472,6 +472,10 @@ class DuelMatchedMessage(BaseModel):
     type: Literal["DUEL_MATCHED"] = "DUEL_MATCHED"
     match_id: str = Field(..., description="Unique match identifier")
     opponent_display_name: str = Field(..., description="Opponent's display name")
+    opponent_user_id: Optional[str] = Field(
+        default=None,
+        description="Opponent's user id (persona id for bots). Lets the client target the opponent for a rematch challenge.",
+    )
     is_bot: bool = Field(..., description="True if opponent is a bot fill-in")
     opponent_rating: int = Field(default=1500, description="Opponent's Glicko rating")
     opponent_wins: int = Field(default=0, description="Opponent's total duel wins")

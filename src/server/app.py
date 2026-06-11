@@ -114,6 +114,11 @@ DUEL_STRICT_WAIT_SECONDS = 10.0
 DUEL_WIDENED_WAIT_SECONDS = 10.0
 # Grace period for duel disconnections (shorter than cash games)
 DUEL_DISCONNECT_GRACE_SECONDS = 30.0
+# Hold between DUEL_MATCHED and the first TABLE_SNAPSHOT in human-vs-human
+# matches, so both clients get a face-off screen. (The iOS client shows the
+# face-off while .matched and leaves it on the first snapshot.) Bot matches
+# get this window for free from the bot-subprocess connect wait.
+DUEL_FACEOFF_SECONDS = 3.5
 
 # Heartbeat reaper: close sockets with no inbound traffic for this long.
 # A suspended/killed iOS app does not send FIN, so the socket can look alive
@@ -2002,6 +2007,28 @@ async def _duel_queue_timeout(match: DuelMatch, queue_key: str) -> None:
         if waiting_match is None or waiting_match.match_id != match.match_id:
             return
 
+        if queue_key.startswith("challenge_"):
+            # Private queues (friend challenges / rematches) are never
+            # bot-filled — the player queued to face a specific person. If
+            # that person doesn't show, refund and cancel.
+            player_id = waiting_match.player1_id
+            _user_duels.pop(player_id, None)
+            refund_cents = waiting_match.player1_entry_fee_cents
+            if firestore and not player_id.startswith(("bot_", "user_bot_")):
+                try:
+                    await firestore.add_balance(player_id, refund_cents)
+                    print(f"[DUEL] Refunded {refund_cents} cents to {player_id} (challenge no-show)", flush=True)
+                except Exception as e:
+                    print(f"[DUEL] Error refunding challenge no-show: {e}", flush=True)
+            await connections.send_to_user(player_id, {
+                "type": "DUEL_CANCELLED",
+                "match_id": waiting_match.match_id,
+                "refunded_cents": refund_cents,
+                "reason": "opponent_no_show",
+            })
+            print(f"[DUEL] Challenge queue {queue_key} timed out, cancelled (no bot fill)", flush=True)
+            return
+
         print(f"[DUEL] Queue timeout for {match.player1_id}, spawning bot", flush=True)
 
         # Fill with bot
@@ -2078,6 +2105,7 @@ async def _start_duel_match(match: DuelMatch, player2_websocket: WebSocket) -> N
         "type": "DUEL_MATCHED",
         "match_id": match.match_id,
         "opponent_display_name": match.player2_display_name,
+        "opponent_user_id": match.player2_id,
         "is_bot": False,
         "opponent_rating": p2_rating,
         "opponent_wins": p2_wins,
@@ -2089,6 +2117,7 @@ async def _start_duel_match(match: DuelMatch, player2_websocket: WebSocket) -> N
         "type": "DUEL_MATCHED",
         "match_id": match.match_id,
         "opponent_display_name": match.player1_display_name,
+        "opponent_user_id": match.player1_id,
         "is_bot": False,
         "opponent_rating": p1_rating,
         "opponent_wins": p1_wins,
@@ -2096,15 +2125,22 @@ async def _start_duel_match(match: DuelMatch, player2_websocket: WebSocket) -> N
         "opponent_avatar": match.player1_avatar,
     })
 
-    # Send TABLE_SNAPSHOT to both
-    snapshot1 = await manager.get_snapshot(match.player1_id)
-    snapshot2 = await manager.get_snapshot(match.player2_id)
+    # Hold for the face-off screen, then send TABLE_SNAPSHOT to both.
+    # Detached task so the joiner's message loop isn't blocked by the hold.
+    async def _send_snapshots_after_faceoff() -> None:
+        await asyncio.sleep(DUEL_FACEOFF_SECONDS)
+        if table_id not in _active_duels:
+            return
+        snapshot1 = await manager.get_snapshot(match.player1_id)
+        snapshot2 = await manager.get_snapshot(match.player2_id)
 
-    await connections.send_to_user(match.player1_id, snapshot1.model_dump(mode="json"))
-    await connections.send_to_user(match.player2_id, snapshot2.model_dump(mode="json"))
+        await connections.send_to_user(match.player1_id, snapshot1.model_dump(mode="json"))
+        await connections.send_to_user(match.player2_id, snapshot2.model_dump(mode="json"))
 
-    # Auto-start first hand after short delay
-    asyncio.create_task(_duel_auto_start_hand(table_id, delay=5.0))
+        # Auto-start first hand after short delay
+        asyncio.create_task(_duel_auto_start_hand(table_id, delay=5.0))
+
+    asyncio.create_task(_send_snapshots_after_faceoff())
 
     print(f"[DUEL] Match started: {match.player1_display_name} vs {match.player2_display_name} at {table_id}", flush=True)
 
@@ -2190,6 +2226,7 @@ async def _start_duel_match_with_bot(match: DuelMatch) -> None:
         "type": "DUEL_MATCHED",
         "match_id": match.match_id,
         "opponent_display_name": bot_display_name,
+        "opponent_user_id": bot_user_id,
         "is_bot": True,
         "opponent_rating": bot_rating,
         "opponent_wins": bot_wins,
