@@ -1649,7 +1649,9 @@ async def _cleanup_bot_table(user_id: str) -> None:
             # Find human's seat and chips
             for seat_idx, seat_state in enumerate(runner._engine._seats):
                 if seat_state and seat_state.player and seat_state.player.user_id == user_id:
-                    final_chips = seat_state.chips
+                    # pending_topup was already debited from the wallet but not
+                    # yet applied to the stack — return it too.
+                    final_chips = seat_state.chips + seat_state.pending_topup
                     if final_chips > 0:
                         await firestore.add_balance(user_id, final_chips)
                         print(f"[BOT] Returned {final_chips} cents to {user_id}", flush=True)

@@ -168,7 +168,9 @@ class PokerTableEngine:
 
         state = self._seats[seat]
         self._seats[seat] = None
-        return Chips(amount=state.chips)
+        # Include any queued top-up: the wallet was debited at request time
+        # but the chips haven't been applied to the stack yet.
+        return Chips(amount=state.chips + state.pending_topup)
 
     def _get_active_seats(self) -> list[int]:
         """Get indices of seats with players who have chips."""

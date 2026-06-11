@@ -416,6 +416,10 @@ class MessageHandler:
         """Handle TOP_UP_REQUEST message. Queue a manual top-up for next hand."""
         try:
             topup_amount, new_stack = await self._manager.request_topup(user_id)
+            # Wallet was debited at request time, so the session's invested
+            # total must grow now — not when the pending top-up is applied.
+            if self._session_tracker:
+                self._session_tracker.record_rebuy(user_id, topup_amount)
             return {
                 "type": "TOP_UP_PENDING",
                 "request_id": request_id,
@@ -995,6 +999,8 @@ class MessageHandler:
                 continue
             if result:
                 rebuy_amount, new_stack = result
+                if self._session_tracker:
+                    self._session_tracker.record_rebuy(user_id, rebuy_amount)
                 rebuy_msg = {
                     "type": "REBUY",
                     "seat": seat_idx,
