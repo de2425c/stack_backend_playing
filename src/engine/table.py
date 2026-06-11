@@ -386,6 +386,7 @@ class PokerTableEngine:
         pk_index = self._active_seat_indices.index(seat)
         stack_before = self._adapter.get_stacks()[pk_index]
         bet_before = self._adapter.get_bets()[pk_index] if pk_index < len(self._adapter.get_bets()) else 0
+        call_needed_before = self._adapter.call_amount or 0
 
         # Apply the action
         amount_cents = amount.amount if amount else None
@@ -411,11 +412,25 @@ class PokerTableEngine:
         # street and reset bets by this point.
         effective_amount = amount
         if action in (ClientAction.CALL, ClientAction.BET, ClientAction.RAISE_TO):
-            spent = stack_before - current_stack
-            if spent > 0:
-                effective_amount = Chips(amount=bet_before + spent)
-            if action == ClientAction.CALL:
-                is_all_in = current_stack == 0
+            if self._adapter.is_complete:
+                # This action completed the hand (all-in runout): PokerKit has
+                # already paid out the pot, so current_stack includes winnings
+                # or refunds and the stack diff is garbage — a winning caller
+                # showed spent<=0 (amount stayed None → "RAISE 0" badges) and
+                # is_all_in=False. Derive the spend from pre-action state.
+                if action == ClientAction.CALL:
+                    spent = min(call_needed_before, stack_before)
+                else:
+                    spent = min(max((amount_cents or 0) - bet_before, 0), stack_before)
+                if spent > 0:
+                    effective_amount = Chips(amount=bet_before + spent)
+                is_all_in = 0 < stack_before <= spent
+            else:
+                spent = stack_before - current_stack
+                if spent > 0:
+                    effective_amount = Chips(amount=bet_before + spent)
+                if action == ClientAction.CALL:
+                    is_all_in = current_stack == 0
 
         # Check if this action triggers an all-in runout (reveal hole cards immediately).
         # Require ≥2 players still in the hand — otherwise the hand ended by fold,
@@ -615,6 +630,27 @@ class PokerTableEngine:
                     seat=seat,
                     amount=Chips(amount=payoff),
                     hand_description=None,  # TODO: get from PokerKit hand evaluator
+                    shown_cards=shown,
+                ))
+
+        # Chopped pot: every chopper's NET payoff is 0, so the payoff>0
+        # filter above finds nobody and the client would receive winners=[].
+        # The client skips its entire end-of-hand block on empty winners
+        # (no banner, no showdown reveal, no ANIMATION_COMPLETE → duels
+        # stall on the 10s fallback). Award each chopper their gross share
+        # of the pot as PokerKit actually distributed it.
+        if not winners and is_showdown:
+            collected = self._adapter.get_collected_amounts()
+            for pk_idx, amount in enumerate(collected):
+                if amount <= 0:
+                    continue
+                seat = self._active_seat_indices[pk_idx]
+                hole_cards = self._adapter.get_hole_cards(pk_idx)
+                shown = [Card(rank=r, suit=s) for r, s in hole_cards] if hole_cards else None
+                winners.append(PotWinner(
+                    seat=seat,
+                    amount=Chips(amount=amount),
+                    hand_description=None,
                     shown_cards=shown,
                 ))
 

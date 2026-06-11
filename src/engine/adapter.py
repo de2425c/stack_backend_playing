@@ -7,7 +7,7 @@ Thin mapping between our protocol and PokerKit's API.
 from dataclasses import dataclass
 from typing import Optional
 
-from pokerkit import NoLimitTexasHoldem, Automation, State
+from pokerkit import NoLimitTexasHoldem, Automation, State, ChipsPushing
 
 from .config import TableConfig
 from ..models import ClientAction, Chips
@@ -237,6 +237,23 @@ class PokerKitAdapter:
         if self._state is None:
             return []
         return list(self._state.payoffs)
+
+    def get_collected_amounts(self) -> list[int]:
+        """Gross chips each player collected from the pot(s) at hand end.
+
+        Sums PokerKit's ChipsPushing operations (one per pot), so split
+        pots, odd-chip awards and side pots are all reflected exactly as
+        PokerKit distributed them. On a chopped pot every chopper shows
+        their returned share here even though their net payoff is 0.
+        """
+        if self._state is None:
+            return []
+        totals = [0] * self._state.player_count
+        for op in self._state.operations:
+            if isinstance(op, ChipsPushing):
+                for idx, amt in enumerate(op.amounts):
+                    totals[idx] += amt
+        return totals
 
     def get_street_name(self) -> Optional[str]:
         """Current street name (preflop, flop, turn, river)."""
