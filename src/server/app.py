@@ -3056,6 +3056,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 )
                 # No response needed - just broadcast
 
+            elif msg_type == "CHAT":
+                # Player chat - relay to the rest of the table
+                await handler.handle_chat(user_id, data.get("text", ""))
+
             else:
                 await connections.send_to_user(user_id, {
                     "type": "ERROR",

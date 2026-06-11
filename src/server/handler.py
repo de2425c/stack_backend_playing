@@ -86,6 +86,8 @@ class MessageHandler:
         # counts don't visibly jump from $0 in the middle of the
         # winner celebration (P0-5).
         self._pending_rebuy_msgs: dict[str, list[dict]] = {}
+        # Per-user flood guard for player chat (CHAT messages).
+        self._last_chat_at: dict[str, float] = {}
 
     async def handle_auth(self, user_id: str, token: str, protocol_version: int) -> dict:
         """Handle AUTH message. Returns response dict.
@@ -1116,6 +1118,43 @@ class MessageHandler:
         # Broadcast to all players at the table
         await self._connections.broadcast_to_table(table_id, quip_msg)
         print(f"[QUIP] Broadcast to table {table_id}: seat {seat} says \"{text}\"", flush=True)
+
+    # Player chat (human ↔ human, duel tables). Server-authoritative seat /
+    # display name — the client only sends text.
+    _CHAT_MAX_LEN = 200
+    _CHAT_MIN_INTERVAL = 0.75  # seconds between messages per user
+
+    async def handle_chat(self, user_id: str, text: str) -> None:
+        """Relay a player chat message to everyone else at the table."""
+        table_id = self._manager.get_table_for_user(user_id)
+        if not table_id:
+            print(f"[CHAT] Ignored - user {user_id} not at any table")
+            return
+
+        text = text.strip()[: self._CHAT_MAX_LEN]
+        if not text:
+            return
+
+        now = time.monotonic()
+        if now - self._last_chat_at.get(user_id, 0.0) < self._CHAT_MIN_INTERVAL:
+            return
+        self._last_chat_at[user_id] = now
+
+        identity = self._manager.get_player_identity(user_id)
+        if identity is None:
+            print(f"[CHAT] Ignored - user {user_id} not seated at {table_id}")
+            return
+        seat, display_name = identity
+
+        chat_msg = {
+            "type": "CHAT",
+            "seat": seat,
+            "display_name": display_name,
+            "text": text,
+        }
+        # Sender renders their own message locally on send; only relay to others.
+        await self._connections.broadcast_to_table(table_id, chat_msg, exclude=user_id)
+        print(f"[CHAT] Relayed at table {table_id}: seat {seat} says \"{text}\"", flush=True)
 
     def _map_error(self, error_msg: str) -> ErrorCode:
         """Map error message to ErrorCode."""

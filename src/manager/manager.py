@@ -331,6 +331,19 @@ class TableManager:
         """Get the table ID for a user, or None if not seated."""
         return self._user_tables.get(user_id)
 
+    def get_player_identity(self, user_id: str) -> Optional[tuple[int, str]]:
+        """Return (seat_index, display_name) for a seated user, or None."""
+        table_id = self._user_tables.get(user_id)
+        if table_id is None:
+            return None
+        runner = self._tables.get(table_id)
+        if not runner:
+            return None
+        for idx, seat in enumerate(runner._engine._seats):
+            if seat and seat.player and seat.player.user_id == user_id:
+                return idx, seat.player.display_name
+        return None
+
     async def get_snapshot(self, user_id: str):
         """Get table snapshot for a user."""
         table_id = self._user_tables.get(user_id)
