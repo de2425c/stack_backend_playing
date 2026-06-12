@@ -143,14 +143,23 @@ HEARTBEAT_REAPER_INTERVAL_SECONDS = 5.0
 
 
 def _kill_orphan_bot_processes() -> int:
-    """Kill any orphan openbot_client processes from previous server runs.
+    """Kill orphan openbot_client processes from previous runs of THIS
+    instance.
+
+    pgrep is machine-global but multiple server instances share one host
+    (8000 dev + 8001 prod). Each bot's ``--server ws://localhost:<port>/ws``
+    identifies its owner — only bots whose port matches ``_SERVER_PORT`` are
+    killed. Indiscriminate killing here used to SIGTERM the OTHER instance's
+    LIVE bots on every restart (e.g. restarting 8000 dev murdered the bot in
+    a duel being played on 8001 prod). Bots whose owner can't be determined
+    are left alone; the periodic ``_sweep_bot_orphans`` applies the same rule.
 
     Returns the number of processes killed.
     """
     try:
-        # Find all openbot_client processes
+        # Find all openbot_client processes with full command lines
         result = subprocess.run(
-            ["pgrep", "-f", "openbot_client"],
+            ["pgrep", "-af", "openbot_client"],
             capture_output=True,
             text=True,
         )
@@ -158,18 +167,38 @@ def _kill_orphan_bot_processes() -> int:
             # No processes found
             return 0
 
-        pids = result.stdout.strip().split("\n")
         killed = 0
-        for pid in pids:
-            if pid:
-                try:
-                    os.kill(int(pid), signal.SIGTERM)
-                    killed += 1
-                except (ProcessLookupError, ValueError):
-                    pass
+        for line in result.stdout.strip().split("\n"):
+            if not line:
+                continue
+            parts = line.split(None, 1)
+            if len(parts) < 2:
+                continue
+            try:
+                pid = int(parts[0])
+            except ValueError:
+                continue
+
+            tokens = parts[1].split()
+            bot_server_port: Optional[str] = None
+            for i, tok in enumerate(tokens):
+                if tok == "--server" and i + 1 < len(tokens):
+                    host_port = tokens[i + 1].rsplit(":", 1)
+                    if len(host_port) == 2:
+                        bot_server_port = host_port[1].split("/", 1)[0]
+                    break
+            if bot_server_port != str(_SERVER_PORT):
+                # Another instance's bot (or unidentifiable) — not ours to kill.
+                continue
+
+            try:
+                os.kill(pid, signal.SIGTERM)
+                killed += 1
+            except (ProcessLookupError, PermissionError):
+                pass
 
         if killed > 0:
-            print(f"[STARTUP] Killed {killed} orphan bot process(es)", flush=True)
+            print(f"[STARTUP] Killed {killed} orphan bot process(es) for port {_SERVER_PORT}", flush=True)
         return killed
     except Exception as e:
         print(f"[STARTUP] Error killing orphan bots: {e}", flush=True)
