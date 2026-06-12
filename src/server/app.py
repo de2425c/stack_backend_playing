@@ -102,6 +102,16 @@ _duel_queues: dict[str, DuelMatch] = {}
 _active_duels: dict[str, DuelMatch] = {}
 # User -> match_id tracking
 _user_duels: dict[str, str] = {}
+# Matches popped from _duel_queues but not yet live in _active_duels (table
+# creation in flight). A cancel landing in this window used to fall through
+# to the stale-entry scrub and silently keep the entry fee (STA-1003).
+_transitioning_duels: dict[str, DuelMatch] = {}
+# DUEL_ENDED payloads stashed for redelivery on the next AUTH. A suspended
+# iOS app's socket can look alive at the TCP layer, so a "successful" send
+# may still be lost; the client drops recaps for matches it's no longer in,
+# making redelivery harmless (STA-1006). user_id -> (monotonic ts, payload).
+_pending_duel_results: dict[str, tuple[float, dict]] = {}
+PENDING_DUEL_RESULT_TTL_SECONDS = 600.0
 
 
 # Valid duel entry fees in cents ($100, $250, $500, $1000, $5000)
@@ -1932,8 +1942,16 @@ async def _join_duel_queue(
         # Track both players
         _user_duels[user_id] = waiting_match.match_id
 
-        # Start the match
-        await _start_duel_match(waiting_match, websocket)
+        # Start the match. Track the queue→active transition so a CANCEL_DUEL
+        # racing the start is rejected as "already started" instead of hitting
+        # the stale-entry scrub, and refund both fees if the start fails.
+        _transitioning_duels[waiting_match.match_id] = waiting_match
+        try:
+            await _start_duel_match(waiting_match, websocket)
+        except Exception as e:
+            await _abort_duel_match_start(waiting_match, e)
+        finally:
+            _transitioning_duels.pop(waiting_match.match_id, None)
         return None
 
     # No opponent waiting - create new match and add to queue
@@ -2033,8 +2051,16 @@ async def _duel_queue_timeout(match: DuelMatch, queue_key: str) -> None:
 
         print(f"[DUEL] Queue timeout for {match.player1_id}, spawning bot", flush=True)
 
-        # Fill with bot
-        await _start_duel_match_with_bot(waiting_match)
+        # Fill with bot. Track the transition (see _join_duel_queue) and
+        # refund the fee if the bot match fails to start — previously the
+        # exception was swallowed below and the entry fee silently kept.
+        _transitioning_duels[waiting_match.match_id] = waiting_match
+        try:
+            await _start_duel_match_with_bot(waiting_match)
+        except Exception as e:
+            await _abort_duel_match_start(waiting_match, e)
+        finally:
+            _transitioning_duels.pop(waiting_match.match_id, None)
 
     except asyncio.CancelledError:
         # Queue was cancelled (opponent found or player cancelled)
@@ -2478,6 +2504,7 @@ async def _complete_duel_match(table_id: str, winner_id: str) -> None:
         msg["your_wins"] = ru["wins"]
         msg["your_losses"] = ru["losses"]
     await connections.send_to_user(match.player1_id, msg)
+    _stash_duel_result(match.player1_id, msg)
 
     # Send to player 2 (if human)
     if not match.player2_is_bot:
@@ -2493,6 +2520,7 @@ async def _complete_duel_match(table_id: str, winner_id: str) -> None:
             msg["your_wins"] = ru["wins"]
             msg["your_losses"] = ru["losses"]
         await connections.send_to_user(match.player2_id, msg)
+        _stash_duel_result(match.player2_id, msg)
 
     print(f"[DUEL] DUEL_ENDED sent to players", flush=True)
 
@@ -2594,6 +2622,55 @@ async def _complete_duel_match(table_id: str, winner_id: str) -> None:
     print(f"[DUEL] Match {match.match_id} completed. Winner: {winner_display_name}, Hands: {hands_played}", flush=True)
 
 
+def _stash_duel_result(user_id: str, payload: dict) -> None:
+    """Stash a player's DUEL_ENDED for redelivery on their next AUTH.
+
+    Stashed unconditionally for humans: a send to a suspended iOS app can
+    "succeed" into a dead TCP buffer, so delivery can't be trusted. The
+    client drops recaps for matches it's no longer in, so redelivering an
+    already-seen result is harmless.
+    """
+    if user_id.startswith(("bot_", "user_bot_")):
+        return
+    _pending_duel_results[user_id] = (time.monotonic(), dict(payload))
+
+
+async def _refund_duel_entry(user_id: str, refund_cents: int, reason: str) -> None:
+    """Refund a duel entry fee, logging instead of raising on failure."""
+    if not firestore or refund_cents <= 0 or user_id.startswith(("bot_", "user_bot_")):
+        return
+    try:
+        await firestore.add_balance(user_id, refund_cents)
+        print(f"[DUEL] Refunded {refund_cents} cents to {user_id} ({reason})", flush=True)
+    except Exception as e:
+        print(f"[DUEL] Error refunding {user_id} ({reason}): {e}", flush=True)
+
+
+async def _abort_duel_match_start(match: DuelMatch, error: Exception) -> None:
+    """A match popped from the queue failed to start: refund every human
+    entry fee, clear tracking, and notify the players. Without this the
+    fees were silently kept and the players left stuck "searching"
+    (STA-1003). Any half-created table is reclaimed by the orphan sweep.
+    """
+    print(f"[DUEL] Match start failed for {match.match_id}: {error}", flush=True)
+    if match.table_id:
+        _active_duels.pop(match.table_id, None)
+
+    players: list[tuple[str, int]] = [(match.player1_id, match.player1_entry_fee_cents)]
+    if match.player2_id and not match.player2_is_bot:
+        players.append((match.player2_id, match.player2_entry_fee_cents or 0))
+
+    for player_id, fee_cents in players:
+        _user_duels.pop(player_id, None)
+        await _refund_duel_entry(player_id, fee_cents, "match start failed")
+        await connections.send_to_user(player_id, {
+            "type": "DUEL_CANCELLED",
+            "match_id": match.match_id,
+            "refunded_cents": fee_cents,
+            "reason": "match_start_failed",
+        })
+
+
 async def _cancel_duel_queue(user_id: str) -> dict:
     """Cancel a pending duel queue and refund entry fee."""
     match_id = _user_duels.get(user_id)
@@ -2630,12 +2707,23 @@ async def _cancel_duel_queue(user_id: str) -> dict:
                 "refunded_cents": refund_cents,
             }
 
-    # Not in queue. Two cases:
-    #  (a) match transitioned to active and is live → leave _user_duels alone;
+    # Not in queue. Three cases:
+    #  (a) match is mid-transition (popped from the queue, table creation in
+    #      flight) → it WILL go live momentarily; reject like an active match
+    #      so we don't scrub tracking out from under _start_duel_match and
+    #      silently keep the fee.
+    #  (b) match transitioned to active and is live → leave _user_duels alone;
     #      the disconnect grace path / _complete_duel_match owns the cleanup.
-    #  (b) match no longer exists anywhere (engine cleanup raced ahead, or a
+    #  (c) match no longer exists anywhere (engine cleanup raced ahead, or a
     #      prior _complete_duel_match crashed before clearing _user_duels) →
     #      scrub the stale entry so the user can queue again.
+    if match_id in _transitioning_duels:
+        return {
+            "type": "ERROR",
+            "code": "bad_request",
+            "message": "Cannot cancel - match already started",
+        }
+
     for active_match in _active_duels.values():
         if active_match.match_id == match_id:
             return {
@@ -2870,6 +2958,17 @@ async def websocket_endpoint(websocket: WebSocket):
         # If this user was mid-forfeit in an active duel, cancel the grace
         # task and tell the opponent they're back. Safe no-op otherwise.
         await _resolve_duel_reconnect(user_id)
+
+        # Redeliver a DUEL_ENDED the user may have missed while their socket
+        # was dead (match forfeited or finished in the background). Without
+        # this the client stayed stuck at .playing on an empty table with no
+        # way to act or leave (STA-1006).
+        pending = _pending_duel_results.pop(user_id, None)
+        if pending and user_id not in _user_duels:
+            stashed_at, payload = pending
+            if time.monotonic() - stashed_at <= PENDING_DUEL_RESULT_TTL_SECONDS:
+                await connections.send_to_user(user_id, {**payload, "recap": True})
+                print(f"[DUEL] Re-sent DUEL_ENDED recap to {user_id}", flush=True)
 
         # Message loop
         while True:
