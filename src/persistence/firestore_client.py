@@ -11,6 +11,7 @@ on the loop, so the wrappers are mandatory rather than cosmetic.
 
 import asyncio
 import logging
+import os
 import time
 import uuid
 from typing import Optional
@@ -42,6 +43,11 @@ class FirestoreClient:
         # Each entry mirrors a doc in the `failed_credits` collection so a
         # process restart can resume delivery via load_failed_credits().
         self._pending_credits: list[dict] = []
+        # Multiple server instances (8000 dev + 8001 prod) share one Firestore
+        # project. open_sessions / failed_credits docs are stamped with the
+        # owning instance's port so one instance's startup sweep can't refund
+        # (or re-deliver) sessions that are alive and well on the other.
+        self._instance_tag = os.environ.get("PORT", "8000")
 
         if not use_memory:
             self._try_init_firestore()
@@ -691,6 +697,7 @@ class FirestoreClient:
         doc = dict(data)
         doc.setdefault("user_id", user_id)
         doc.setdefault("status", "open")
+        doc.setdefault("server_port", self._instance_tag)
         doc.setdefault("created_at", datetime.utcnow().isoformat())
 
         if self._db:
@@ -729,13 +736,20 @@ class FirestoreClient:
             self._in_memory.setdefault("open_sessions", {}).pop(user_id, None)
 
     async def list_open_sessions(self) -> list[dict]:
-        """All open-session docs — used by the startup orphan sweep."""
+        """This instance's open-session docs — used by the startup orphan sweep.
+
+        Filtered in Python rather than the query so docs written before the
+        server_port stamp existed (no field) are still claimed by whichever
+        instance sweeps them first instead of leaking forever.
+        """
         if self._db:
             def _query():
                 return [doc.to_dict() for doc in self._db.collection("open_sessions").stream()]
 
-            return await asyncio.to_thread(_query)
-        return list(self._in_memory.get("open_sessions", {}).values())
+            docs = await asyncio.to_thread(_query)
+        else:
+            docs = list(self._in_memory.get("open_sessions", {}).values())
+        return [d for d in docs if d.get("server_port", self._instance_tag) == self._instance_tag]
 
     # =========================================================================
     # RELIABLE WALLET CREDITS (refunds that must not be lost)
@@ -773,6 +787,7 @@ class FirestoreClient:
                 "cents": cents,
                 "reason": reason,
                 "open_session_user": open_session_user,
+                "server_port": self._instance_tag,
                 "status": "pending",
                 "created_at": datetime.utcnow().isoformat(),
             }
@@ -850,6 +865,11 @@ class FirestoreClient:
         known = {e["entry_id"] for e in self._pending_credits}
         loaded = 0
         for entry in entries:
+            # Only resume credits this instance queued — the other instance's
+            # live process is already retrying its own (loading them here
+            # would deliver them twice).
+            if entry.get("server_port", self._instance_tag) != self._instance_tag:
+                continue
             if entry.get("entry_id") not in known:
                 self._pending_credits.append(entry)
                 loaded += 1
