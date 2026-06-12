@@ -161,9 +161,15 @@ class TableManager:
         # already populated). If the join fails, we tear it down so the
         # runner task + empty queue don't linger.
         created_table_id: Optional[str] = None
+        # Duel stacks are virtual chips at fixed 5¢/10¢ blinds — the real
+        # money is the entry fee, debited at JOIN_DUEL time. Debiting the
+        # buy-in here as well double-charged duel players (the table stack
+        # was never credited back at match end).
+        is_duel_stake = stake_id.startswith("duel_")
         is_real_user = (
             self._firestore is not None
             and not user_id.startswith(("bot_", "user_bot_"))
+            and not is_duel_stake
         )
 
         try:
@@ -203,6 +209,24 @@ class TableManager:
             self._user_tables[user_id] = runner.table_id
             seated = True
 
+            # Crash-safe ledger: record the wallet money now sitting on the
+            # table. If the process dies before the session settles, the
+            # startup sweep refunds total_in_cents. Best-effort — a ledger
+            # write failure must not fail the join.
+            if debited_cents > 0:
+                try:
+                    await self._firestore.upsert_open_session(user_id, {
+                        "mode": "cash",
+                        "table_id": runner.table_id,
+                        "stake_id": stake_id,
+                        "total_in_cents": debited_cents,
+                    })
+                except Exception as ledger_err:
+                    logger.warning(
+                        "[ADD_PLAYER] Failed to write open-session ledger for %s: %r",
+                        user_id, ledger_err,
+                    )
+
             return (runner.table_id, seat)
         finally:
             # Tear down the table we created if the join failed, so the
@@ -224,13 +248,15 @@ class TableManager:
                         )
 
             if debited_cents > 0 and not seated:
-                # Refund best-effort. Shield from outer-task cancellation so
-                # the wallet credit always lands; if the Firestore call itself
-                # raises we log CRITICAL — that's a money-stuck event needing
-                # operator intervention.
+                # Refund via the reliable-credit path. Shield from outer-task
+                # cancellation so the wallet credit always lands; if Firestore
+                # is down the credit is queued (in memory + failed_credits doc)
+                # and retried until delivered.
                 try:
                     await asyncio.shield(
-                        self._firestore.add_balance(user_id, debited_cents)
+                        self._firestore.credit_balance_reliable(
+                            user_id, debited_cents, "seat_acquisition_failed"
+                        )
                     )
                     logger.warning(
                         "[ADD_PLAYER] Refunded %d cents to %s after seat-acquisition failure",
@@ -238,7 +264,7 @@ class TableManager:
                     )
                 except asyncio.CancelledError:
                     # Outer task was cancelled. asyncio.shield kept the inner
-                    # add_balance task running; the refund WILL complete.
+                    # credit task running; the refund WILL complete (or queue).
                     # Re-raise so the caller still sees the cancellation.
                     logger.warning(
                         "[ADD_PLAYER] Outer task cancelled during refund of %d cents to %s; "
@@ -246,16 +272,6 @@ class TableManager:
                         debited_cents, user_id,
                     )
                     raise
-                except Exception as refund_err:
-                    # Firestore is down or the transaction failed. Log loudly
-                    # so an operator can manually credit the wallet. The
-                    # original failure is still raised — we don't swallow it
-                    # by virtue of being in finally.
-                    logger.critical(
-                        "[ADD_PLAYER][CRITICAL] FAILED to refund %d cents to %s "
-                        "after seat-acquisition failure: %r",
-                        debited_cents, user_id, refund_err,
-                    )
 
     async def remove_player(self, user_id: str) -> Chips:
         """Remove a player from their table. Returns final chips."""
@@ -452,6 +468,16 @@ class TableManager:
             seat_state.chips = max_stack
             applied = True
             print(f"[REBUY] Topped up {user_id} by {rebuy_amount} cents to {max_stack}")
+
+            # Keep the crash-safe ledger in step with the wallet debit.
+            try:
+                await self._firestore.increment_open_session(user_id, rebuy_amount)
+            except Exception as ledger_err:
+                logger.warning(
+                    "[REBUY] Failed to increment open-session ledger for %s: %r",
+                    user_id, ledger_err,
+                )
+
             return (rebuy_amount, max_stack)
         except Exception as e:
             print(f"[REBUY] Failed for {user_id}: {e}")
@@ -460,7 +486,9 @@ class TableManager:
             if debited_cents > 0 and not applied:
                 try:
                     await asyncio.shield(
-                        self._firestore.add_balance(user_id, debited_cents)
+                        self._firestore.credit_balance_reliable(
+                            user_id, debited_cents, "rebuy_apply_failed"
+                        )
                     )
                     logger.warning(
                         "[REBUY] Refunded %d cents to %s after rebuy apply failure",
@@ -473,12 +501,6 @@ class TableManager:
                         debited_cents, user_id,
                     )
                     raise
-                except Exception as refund_err:
-                    logger.critical(
-                        "[REBUY][CRITICAL] FAILED to refund %d cents to %s "
-                        "after rebuy apply failure: %r",
-                        debited_cents, user_id, refund_err,
-                    )
 
     async def request_topup(self, user_id: str) -> tuple[int, int]:
         """
@@ -536,12 +558,25 @@ class TableManager:
             applied = True
 
             print(f"[TOPUP] Queued {topup_amount} cents for {user_id}, new projected stack: {new_stack}")
+
+            # Keep the crash-safe ledger in step with the wallet debit.
+            if debited_cents > 0:
+                try:
+                    await self._firestore.increment_open_session(user_id, debited_cents)
+                except Exception as ledger_err:
+                    logger.warning(
+                        "[TOPUP] Failed to increment open-session ledger for %s: %r",
+                        user_id, ledger_err,
+                    )
+
             return (topup_amount, new_stack)
         finally:
             if debited_cents > 0 and not applied:
                 try:
                     await asyncio.shield(
-                        self._firestore.add_balance(user_id, debited_cents)
+                        self._firestore.credit_balance_reliable(
+                            user_id, debited_cents, "topup_queue_failed"
+                        )
                     )
                     logger.warning(
                         "[TOPUP] Refunded %d cents to %s after queue failure",
@@ -554,12 +589,6 @@ class TableManager:
                         debited_cents, user_id,
                     )
                     raise
-                except Exception as refund_err:
-                    logger.critical(
-                        "[TOPUP][CRITICAL] FAILED to refund %d cents to %s "
-                        "after queue failure: %r",
-                        debited_cents, user_id, refund_err,
-                    )
 
     async def shutdown(self) -> None:
         """Stop all table runners."""

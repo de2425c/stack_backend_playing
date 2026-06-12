@@ -485,6 +485,94 @@ async def _hand_log_retry_loop() -> None:
         raise
 
 
+async def _write_disconnect_refund_notice(
+    user_id: str,
+    amount_cents: int,
+    mode: str,
+    reason: str = "disconnect",
+) -> None:
+    """Best-effort pending notice: 'you were disconnected, chips refunded'.
+
+    The iOS client reads users/{uid}/pending_notices on launch, shows the
+    banner, and deletes the doc. Never raises — a notice failure must not
+    break the refund path it decorates.
+    """
+    if not firestore or user_id.startswith(("bot_", "user_bot_")):
+        return
+    try:
+        await firestore.write_pending_notice(user_id, {
+            "type": "disconnect_refund",
+            "amount_cents": amount_cents,
+            "mode": mode,
+            "reason": reason,
+        })
+    except Exception as e:
+        print(f"[NOTICE] Failed to write disconnect notice for {user_id}: {e}", flush=True)
+
+
+async def _sweep_orphaned_open_sessions() -> None:
+    """Refund wallet money stranded on tables by an unclean shutdown.
+
+    Tables and duel queues live only in process memory, so at startup every
+    open_sessions doc is an orphan: the buy-in / entry fee was debited but
+    the session it funded no longer exists. Refund total_in_cents, tell the
+    user, and delete the ledger doc.
+    """
+    if not firestore:
+        return
+    docs = await firestore.list_open_sessions()
+    if not docs:
+        return
+    print(f"[SWEEP] Found {len(docs)} orphaned open sessions from previous run", flush=True)
+    for doc in docs:
+        user_id = doc.get("user_id")
+        total = int(doc.get("total_in_cents", 0) or 0)
+        mode = doc.get("mode", "cash")
+        if not user_id:
+            continue
+        # A failed_credits entry loaded from the previous run may already own
+        # this user's refund (their session was settled but the credit never
+        # landed). Crediting again here would double-refund — let the retry
+        # queue deliver it and delete the doc via open_session_user.
+        if firestore.has_pending_credit(user_id):
+            print(f"[SWEEP] Skipping {user_id} — a queued credit from the previous run owns this refund", flush=True)
+            continue
+        try:
+            delivered = await firestore.credit_balance_reliable(
+                user_id, total, "orphaned_session_sweep",
+                open_session_user=user_id,
+            )
+            if total > 0:
+                await _write_disconnect_refund_notice(
+                    user_id, total, mode=mode, reason="server_restart"
+                )
+            # Delete only once the credit landed; otherwise the retry queue
+            # owns the doc and deletes it on delivery.
+            if delivered:
+                await firestore.delete_open_session(user_id)
+            print(
+                f"[SWEEP] Refunded {total} cents to {user_id} ({mode} session orphaned by restart)",
+                flush=True,
+            )
+        except Exception as e:
+            print(f"[SWEEP] Failed to settle orphaned session for {user_id}: {e}", flush=True)
+
+
+async def _wallet_credit_retry_loop() -> None:
+    """Periodically re-attempt wallet credits that failed to land."""
+    try:
+        while True:
+            await asyncio.sleep(30)
+            if firestore:
+                try:
+                    await firestore.retry_pending_credits()
+                except Exception as e:
+                    print(f"[CREDIT][RETRY] Loop iteration failed: {e}", flush=True)
+    except asyncio.CancelledError:
+        print("[CREDIT][RETRY] Retry loop stopped", flush=True)
+        raise
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan - initialize and cleanup resources."""
@@ -539,9 +627,26 @@ async def lifespan(app: FastAPI):
                 else:
                     # Regular table - remove player and return chips
                     chips = await manager.remove_player(user_id)
-                    if chips.amount > 0 and firestore:
-                        await firestore.add_balance(user_id, chips.amount)
-                        logger.info(f"Returned {chips.amount} cents after grace period", user_id=user_id)
+                    if firestore:
+                        # Credit first; settle the crash-safe ledger doc only
+                        # once the credit landed. On failure the retry queue
+                        # owns delivery (open_session_user) and deletes the
+                        # doc when it delivers — until then the doc keeps the
+                        # startup sweep as a backstop.
+                        delivered = await firestore.credit_balance_reliable(
+                            user_id, chips.amount, "disconnect_grace_expired",
+                            open_session_user=user_id,
+                        )
+                        if delivered:
+                            try:
+                                await firestore.delete_open_session(user_id)
+                            except Exception:
+                                pass
+                        if chips.amount > 0:
+                            logger.info(f"Returned {chips.amount} cents after grace period", user_id=user_id)
+                            await _write_disconnect_refund_notice(
+                                user_id, chips.amount, mode="cash"
+                            )
                 connections.disconnect(user_id)
                 logger.info("Player removed after grace period expired", user_id=user_id, table_id=table_id)
         except Exception as e:
@@ -549,10 +654,21 @@ async def lifespan(app: FastAPI):
 
     reconnect_mgr.set_expiry_callback(on_grace_expired)
 
+    # Crash-recovery: refund wallet money stranded by an unclean shutdown.
+    # Tables are in-memory only, so every open_sessions doc at startup
+    # belongs to a session this process no longer knows about. Also resume
+    # delivery of any wallet credits that failed in a previous run.
+    try:
+        await firestore.load_failed_credits()
+        await _sweep_orphaned_open_sessions()
+    except Exception as e:
+        logger.warning(f"Startup wallet recovery failed: {e}")
+
     sweeper_task = asyncio.create_task(_duel_state_sweeper_loop())
     heartbeat_task = asyncio.create_task(_heartbeat_reaper_loop())
     hand_log_retry_task = asyncio.create_task(_hand_log_retry_loop())
     bot_orphan_task = asyncio.create_task(_bot_orphan_sweeper_loop())
+    credit_retry_task = asyncio.create_task(_wallet_credit_retry_loop())
 
     yield
 
@@ -560,7 +676,8 @@ async def lifespan(app: FastAPI):
     heartbeat_task.cancel()
     hand_log_retry_task.cancel()
     bot_orphan_task.cancel()
-    for t in (sweeper_task, heartbeat_task, hand_log_retry_task, bot_orphan_task):
+    credit_retry_task.cancel()
+    for t in (sweeper_task, heartbeat_task, hand_log_retry_task, bot_orphan_task, credit_retry_task):
         try:
             await t
         except (asyncio.CancelledError, Exception):
@@ -1662,9 +1779,27 @@ async def _cleanup_bot_table(user_id: str) -> None:
                     # pending_topup was already debited from the wallet but not
                     # yet applied to the stack — return it too.
                     final_chips = seat_state.chips + seat_state.pending_topup
+                    # Credit first; settle the crash-safe ledger doc only once
+                    # the credit landed. On failure the retry queue owns
+                    # delivery (open_session_user) and deletes the doc when it
+                    # delivers — until then the doc keeps the startup sweep as
+                    # a backstop.
+                    delivered = await firestore.credit_balance_reliable(
+                        user_id, final_chips, "bot_table_disconnect",
+                        open_session_user=user_id,
+                    )
+                    if delivered:
+                        try:
+                            await firestore.delete_open_session(user_id)
+                        except Exception:
+                            pass
                     if final_chips > 0:
-                        await firestore.add_balance(user_id, final_chips)
                         print(f"[BOT] Returned {final_chips} cents to {user_id}", flush=True)
+                        # Every _cleanup_bot_table caller is a disconnect path
+                        # (WS drop or grace expiry) — tell the user next launch.
+                        await _write_disconnect_refund_notice(
+                            user_id, final_chips, mode="cash"
+                        )
                     break
     except Exception as e:
         print(f"[BOT] Error returning chips: {e}", flush=True)
@@ -1913,6 +2048,18 @@ async def _join_duel_queue(
                 "message": str(e),
             }
 
+        # Crash-safe ledger: the fee is now off the wallet but the match
+        # lives only in memory. If the process dies before the duel settles,
+        # the startup sweep refunds it. Best-effort.
+        try:
+            await firestore.upsert_open_session(user_id, {
+                "mode": "duel",
+                "stake_id": _get_duel_stake_id(stack_type),
+                "total_in_cents": entry_fee_cents,
+            })
+        except Exception as ledger_err:
+            print(f"[DUEL] Failed to write open-session ledger for {user_id}: {ledger_err}", flush=True)
+
     # Look for a waiting opponent (strict same-tier first, then any tier
     # if a waiter has already widened).
     found = _find_waiting_match(entry_fee_cents, stack_type, challenge_id)
@@ -2034,12 +2181,7 @@ async def _duel_queue_timeout(match: DuelMatch, queue_key: str) -> None:
             player_id = waiting_match.player1_id
             _user_duels.pop(player_id, None)
             refund_cents = waiting_match.player1_entry_fee_cents
-            if firestore and not player_id.startswith(("bot_", "user_bot_")):
-                try:
-                    await firestore.add_balance(player_id, refund_cents)
-                    print(f"[DUEL] Refunded {refund_cents} cents to {player_id} (challenge no-show)", flush=True)
-                except Exception as e:
-                    print(f"[DUEL] Error refunding challenge no-show: {e}", flush=True)
+            await _refund_duel_entry(player_id, refund_cents, "challenge_no_show")
             await connections.send_to_user(player_id, {
                 "type": "DUEL_CANCELLED",
                 "match_id": waiting_match.match_id,
@@ -2356,6 +2498,15 @@ async def _complete_duel_match(table_id: str, winner_id: str) -> None:
         winner_display_name = match.player2_display_name
         loser_id = match.player1_id
 
+    # Settle the loser's crash-safe ledger doc now — their entry fee is
+    # consumed by the match, there is nothing left to refund. The winner's
+    # doc is settled in the background task right after the payout lands.
+    if firestore and loser_id and not loser_id.startswith(("bot_", "user_bot_")):
+        try:
+            await firestore.delete_open_session(loser_id)
+        except Exception:
+            pass
+
     # Get hands played from runner
     runner = manager._tables.get(table_id)
     hands_played = runner.hands_played if runner else 0
@@ -2530,10 +2681,23 @@ async def _complete_duel_match(table_id: str, winner_id: str) -> None:
     async def _write_duel_to_firestore():
         """Background task to write duel data to Firestore."""
         try:
-            # Award prize to winner — winner's own stake doubled.
+            # Award prize to winner — winner's own stake doubled. Reliable
+            # path: a Firestore hiccup queues the payout for retry instead
+            # of dropping it.
             if not winner_id.startswith(("bot_", "user_bot_")):
-                await firestore.add_balance(winner_id, winner_payout_cents)
+                delivered = await firestore.credit_balance_reliable(
+                    winner_id, winner_payout_cents, "duel_prize",
+                    open_session_user=winner_id,
+                )
                 print(f"[DUEL] Awarded {winner_payout_cents} cents to winner {winner_id}", flush=True)
+                # Settle the winner's crash-safe ledger doc only once the
+                # payout landed; on failure the retry queue owns delivery
+                # and deletes it (open_session_user).
+                if delivered:
+                    try:
+                        await firestore.delete_open_session(winner_id)
+                    except Exception:
+                        pass
 
             # Update ratings
             if p1_rating_update:
@@ -2637,11 +2801,24 @@ def _stash_duel_result(user_id: str, payload: dict) -> None:
 
 async def _refund_duel_entry(user_id: str, refund_cents: int, reason: str) -> None:
     """Refund a duel entry fee, logging instead of raising on failure."""
-    if not firestore or refund_cents <= 0 or user_id.startswith(("bot_", "user_bot_")):
+    if not firestore or user_id.startswith(("bot_", "user_bot_")):
         return
     try:
-        await firestore.add_balance(user_id, refund_cents)
-        print(f"[DUEL] Refunded {refund_cents} cents to {user_id} ({reason})", flush=True)
+        # Credit first; settle the crash-safe ledger doc only once the credit
+        # landed. On failure the retry queue owns delivery (open_session_user)
+        # and deletes the doc when it delivers — until then the doc keeps the
+        # startup sweep as a backstop.
+        delivered = await firestore.credit_balance_reliable(
+            user_id, refund_cents, f"duel_refund:{reason}",
+            open_session_user=user_id,
+        )
+        if delivered:
+            try:
+                await firestore.delete_open_session(user_id)
+            except Exception:
+                pass
+        if refund_cents > 0:
+            print(f"[DUEL] Refunded {refund_cents} cents to {user_id} ({reason})", flush=True)
     except Exception as e:
         print(f"[DUEL] Error refunding {user_id} ({reason}): {e}", flush=True)
 
@@ -2694,12 +2871,7 @@ async def _cancel_duel_queue(user_id: str) -> dict:
 
             # Refund entry fee (only player1 is in the queue when waiting).
             refund_cents = match.player1_entry_fee_cents
-            if firestore and not user_id.startswith(("bot_", "user_bot_")):
-                try:
-                    await firestore.add_balance(user_id, refund_cents)
-                    print(f"[DUEL] Refunded {refund_cents} cents to {user_id}", flush=True)
-                except Exception as e:
-                    print(f"[DUEL] Error refunding: {e}", flush=True)
+            await _refund_duel_entry(user_id, refund_cents, "queue_cancelled")
 
             return {
                 "type": "DUEL_CANCELLED",
@@ -2761,6 +2933,20 @@ async def _handle_duel_disconnect(user_id: str, table_id: str) -> None:
 
     print(f"[DUEL] Player {user_id} disconnected, forfeiting to {winner_id}", flush=True)
     await _complete_duel_match(table_id, winner_id)
+
+    # Tell the forfeiting player what happened on their next launch — the
+    # DUEL_ENDED stash only survives 10 minutes; this notice persists.
+    if not user_id.startswith(("bot_", "user_bot_")) and firestore:
+        try:
+            await firestore.write_pending_notice(user_id, {
+                "type": "duel_forfeit",
+                "amount_cents": 0,
+                "mode": "duel",
+                "reason": "disconnect",
+                "match_id": match.match_id,
+            })
+        except Exception as e:
+            print(f"[DUEL] Failed to write forfeit notice for {user_id}: {e}", flush=True)
 
 
 def _duel_opponent_id(match: DuelMatch, user_id: str) -> Optional[str]:
@@ -3206,8 +3392,15 @@ async def websocket_endpoint(websocket: WebSocket):
                         await _start_duel_disconnect_grace(user_id, table_id)
                     else:
                         # In queue - cancel and refund
-                        await _cancel_duel_queue(user_id)
+                        cancel_result = await _cancel_duel_queue(user_id)
                         logger.info("Duel queue cancelled for disconnected player", user_id=user_id)
+                        # The user is gone, so the DUEL_CANCELLED response has
+                        # nowhere to land — leave a notice for next launch.
+                        refunded = cancel_result.get("refunded_cents", 0) if isinstance(cancel_result, dict) else 0
+                        if refunded > 0:
+                            await _write_disconnect_refund_notice(
+                                user_id, refunded, mode="duel"
+                            )
                 else:
                     # Regular players: start grace period for reconnection
                     table_id = manager.get_table_for_user(user_id)

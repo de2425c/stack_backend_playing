@@ -332,6 +332,14 @@ class MessageHandler:
                     if rebuy_msg.get("seat") != seat_index:
                         self._pending_rebuy_msgs.setdefault(table_id, []).append(rebuy_msg)
 
+            # Duel stacks are virtual chips (entry fee is the real money,
+            # settled by the duel flow) — never credit them to the wallet.
+            is_duel_table = False
+            if table_id:
+                runner_for_stake = self._manager._tables.get(table_id)
+                if runner_for_stake is not None:
+                    is_duel_table = runner_for_stake._config.stake_id.startswith("duel_")
+
             chips = await self._manager.remove_player(user_id)
             self._connections.leave_table(user_id)
 
@@ -339,13 +347,26 @@ class MessageHandler:
             if self._session_tracker:
                 self._session_tracker.end_session(user_id, chips.amount)
 
-            # Credit balance back to wallet (skip for bots)
+            # Credit balance back to wallet (skip for bots and duel tables).
+            # Credit first; settle the crash-safe ledger doc only once the
+            # credit landed. On failure the retry queue owns delivery
+            # (open_session_user) and deletes the doc when it delivers —
+            # until then the doc keeps the startup sweep as a backstop.
             if (
-                chips.amount > 0
-                and self._manager._firestore
+                self._manager._firestore
                 and not user_id.startswith(("bot_", "user_bot_"))
+                and not is_duel_table
             ):
-                await self._manager._firestore.add_balance(user_id, chips.amount)
+                firestore = self._manager._firestore
+                delivered = await firestore.credit_balance_reliable(
+                    user_id, chips.amount, "leave_table_cashout",
+                    open_session_user=user_id,
+                )
+                if delivered:
+                    try:
+                        await firestore.delete_open_session(user_id)
+                    except Exception:
+                        pass
 
             # Broadcast SEAT_UPDATE (empty seat) to remaining players
             if table_id and seat_index is not None:

@@ -11,6 +11,8 @@ on the loop, so the wrappers are mandatory rather than cosmetic.
 
 import asyncio
 import logging
+import time
+import uuid
 from typing import Optional
 from datetime import datetime
 from .models import HandLog, LedgerEntry, DuelRecord, DuelRating
@@ -35,6 +37,11 @@ class FirestoreClient:
         """
         self._db = None
         self._in_memory: dict[str, list] = {"hands": [], "ledger": []}
+        # Wallet credits that failed to land (Firestore outage / txn error).
+        # Drained by retry_pending_credits(), which app.py calls on a loop.
+        # Each entry mirrors a doc in the `failed_credits` collection so a
+        # process restart can resume delivery via load_failed_credits().
+        self._pending_credits: list[dict] = []
 
         if not use_memory:
             self._try_init_firestore()
@@ -236,7 +243,7 @@ class FirestoreClient:
             raise ValueError("Deduction amount must be positive")
 
         if self._db:
-            from google.cloud.firestore import transactional
+            from google.cloud.firestore import SERVER_TIMESTAMP, transactional
 
             def _deduct_blocking() -> int:
                 transaction = self._db.transaction()
@@ -259,7 +266,11 @@ class FirestoreClient:
 
                     new_cents = current_cents - cents
                     new_dollars = new_cents // 100
-                    txn.update(ref, {"dollars": new_dollars})
+                    # Keep `updatedAt` in sync with the iOS DollarsService
+                    # writes — the bankroll leaderboard uses it to drop
+                    # dormant wallets, so table buy-ins must count as
+                    # wallet activity.
+                    txn.update(ref, {"dollars": new_dollars, "updatedAt": SERVER_TIMESTAMP})
                     return new_cents
 
                 return deduct_in_transaction(transaction, wallet_ref)
@@ -302,7 +313,7 @@ class FirestoreClient:
             raise ValueError("Addition amount must be positive")
 
         if self._db:
-            from google.cloud.firestore import transactional
+            from google.cloud.firestore import SERVER_TIMESTAMP, transactional
 
             def _add_blocking() -> int:
                 transaction = self._db.transaction()
@@ -321,10 +332,12 @@ class FirestoreClient:
                     new_cents = current_cents + cents
                     new_dollars = new_cents // 100
 
+                    # `updatedAt` mirrors the iOS DollarsService writes; the
+                    # bankroll leaderboard treats it as wallet activity.
                     if doc.exists:
-                        txn.update(ref, {"dollars": new_dollars})
+                        txn.update(ref, {"dollars": new_dollars, "updatedAt": SERVER_TIMESTAMP})
                     else:
-                        txn.set(ref, {"dollars": new_dollars})
+                        txn.set(ref, {"dollars": new_dollars, "updatedAt": SERVER_TIMESTAMP})
 
                     return new_cents
 
@@ -631,3 +644,215 @@ class FirestoreClient:
                 self._in_memory["duel_ratings"] = {}
             self._in_memory["duel_ratings"][user_id] = data
             logger.info(f"[In-Memory] Updated duel rating for {user_id}: rating={rating:.0f}, rd={rd:.0f}")
+
+    # =========================================================================
+    # PENDING NOTICES (user-facing "you were disconnected, chips refunded")
+    # =========================================================================
+
+    async def write_pending_notice(self, user_id: str, notice: dict) -> None:
+        """
+        Queue a one-time notice for the iOS client to show on next launch.
+
+        Written to users/{user_id}/pending_notices/{auto-id}. The client
+        reads, displays, and deletes the docs. Best-effort: callers should
+        not let a notice failure break a refund path.
+        """
+        data = dict(notice)
+        data.setdefault("user_id", user_id)
+        data.setdefault("created_at", datetime.utcnow().isoformat())
+
+        if self._db:
+            doc_id = uuid.uuid4().hex
+            await asyncio.to_thread(
+                self._db.collection("users")
+                .document(user_id)
+                .collection("pending_notices")
+                .document(doc_id)
+                .set,
+                data,
+            )
+            logger.info(f"Pending notice written for {user_id}: {data.get('type')}")
+        else:
+            self._in_memory.setdefault("pending_notices", {}).setdefault(user_id, []).append(data)
+
+    # =========================================================================
+    # OPEN SESSION LEDGER (crash-safe record of wallet money sitting on tables)
+    # =========================================================================
+    #
+    # One doc per user at open_sessions/{user_id}, created when their wallet
+    # is debited for a seat (cash buy-in) or a duel entry fee, incremented on
+    # rebuy/top-up, and deleted when the server consciously settles the
+    # session (leave, grace-expiry refund, duel completion/refund). Any doc
+    # still present at startup belongs to a session the process lost track of
+    # (crash / unclean restart) — the sweep refunds total_in_cents.
+
+    async def upsert_open_session(self, user_id: str, data: dict) -> None:
+        """Create/replace the user's open-session ledger doc."""
+        doc = dict(data)
+        doc.setdefault("user_id", user_id)
+        doc.setdefault("status", "open")
+        doc.setdefault("created_at", datetime.utcnow().isoformat())
+
+        if self._db:
+            await asyncio.to_thread(
+                self._db.collection("open_sessions").document(user_id).set, doc
+            )
+        else:
+            self._in_memory.setdefault("open_sessions", {})[user_id] = doc
+
+    async def increment_open_session(self, user_id: str, cents: int) -> None:
+        """Add cents to the user's open-session total (rebuy / top-up)."""
+        if cents <= 0:
+            return
+        if self._db:
+            from google.cloud import firestore as gc_firestore
+
+            await asyncio.to_thread(
+                self._db.collection("open_sessions").document(user_id).update,
+                {
+                    "total_in_cents": gc_firestore.Increment(cents),
+                    "updated_at": datetime.utcnow().isoformat(),
+                },
+            )
+        else:
+            doc = self._in_memory.setdefault("open_sessions", {}).get(user_id)
+            if doc is not None:
+                doc["total_in_cents"] = doc.get("total_in_cents", 0) + cents
+
+    async def delete_open_session(self, user_id: str) -> None:
+        """Remove the user's open-session ledger doc (session settled)."""
+        if self._db:
+            await asyncio.to_thread(
+                self._db.collection("open_sessions").document(user_id).delete
+            )
+        else:
+            self._in_memory.setdefault("open_sessions", {}).pop(user_id, None)
+
+    async def list_open_sessions(self) -> list[dict]:
+        """All open-session docs — used by the startup orphan sweep."""
+        if self._db:
+            def _query():
+                return [doc.to_dict() for doc in self._db.collection("open_sessions").stream()]
+
+            return await asyncio.to_thread(_query)
+        return list(self._in_memory.get("open_sessions", {}).values())
+
+    # =========================================================================
+    # RELIABLE WALLET CREDITS (refunds that must not be lost)
+    # =========================================================================
+
+    async def credit_balance_reliable(
+        self,
+        user_id: str,
+        cents: int,
+        reason: str,
+        open_session_user: Optional[str] = None,
+    ) -> bool:
+        """
+        Credit a wallet; on failure, enqueue for retry instead of losing it.
+
+        Failed credits go to an in-memory queue (drained by
+        retry_pending_credits) AND a `failed_credits` doc so a restart can
+        resume delivery. Returns True if the credit landed immediately.
+
+        Args:
+            open_session_user: if set, the open_sessions/{uid} ledger doc is
+                deleted once the credit eventually lands (the retry path owns
+                the doc from this point, so the startup sweep can't also
+                refund it).
+        """
+        if cents <= 0:
+            return True
+        try:
+            await self.add_balance(user_id, cents)
+            return True
+        except Exception as e:
+            entry = {
+                "entry_id": f"credit_{user_id}_{int(time.time() * 1000)}_{uuid.uuid4().hex[:6]}",
+                "user_id": user_id,
+                "cents": cents,
+                "reason": reason,
+                "open_session_user": open_session_user,
+                "status": "pending",
+                "created_at": datetime.utcnow().isoformat(),
+            }
+            self._pending_credits.append(entry)
+            logger.critical(
+                "[CREDIT][CRITICAL] FAILED to credit %d cents to %s (%s): %r — queued for retry",
+                cents, user_id, reason, e,
+            )
+            # Best-effort persistence so the credit survives a process crash.
+            try:
+                if self._db:
+                    await asyncio.to_thread(
+                        self._db.collection("failed_credits").document(entry["entry_id"]).set,
+                        entry,
+                    )
+            except Exception:
+                pass
+            return False
+
+    def has_pending_credit(self, user_id: str) -> bool:
+        """True if a queued (undelivered) wallet credit exists for this user."""
+        return any(e.get("user_id") == user_id for e in self._pending_credits)
+
+    async def retry_pending_credits(self) -> None:
+        """Drain the failed-credit queue. Called periodically by app.py."""
+        for entry in list(self._pending_credits):
+            try:
+                await self.add_balance(entry["user_id"], entry["cents"])
+            except Exception:
+                continue  # Still failing — keep queued.
+
+            self._pending_credits.remove(entry)
+            logger.warning(
+                "[CREDIT][RETRY] Delivered %d cents to %s (%s)",
+                entry["cents"], entry["user_id"], entry["reason"],
+            )
+            if entry.get("open_session_user"):
+                try:
+                    await self.delete_open_session(entry["open_session_user"])
+                except Exception:
+                    pass
+            try:
+                if self._db:
+                    await asyncio.to_thread(
+                        self._db.collection("failed_credits")
+                        .document(entry["entry_id"])
+                        .update,
+                        {"status": "delivered", "delivered_at": datetime.utcnow().isoformat()},
+                    )
+            except Exception:
+                pass
+
+    async def load_failed_credits(self) -> int:
+        """
+        Load undelivered failed_credits docs from a previous run into the
+        retry queue. Called once at startup. Returns the number loaded.
+        """
+        if not self._db:
+            return 0
+
+        def _query():
+            return [
+                doc.to_dict()
+                for doc in self._db.collection("failed_credits")
+                .where("status", "==", "pending")
+                .stream()
+            ]
+
+        try:
+            entries = await asyncio.to_thread(_query)
+        except Exception as e:
+            logger.warning(f"Could not load failed_credits at startup: {e}")
+            return 0
+
+        known = {e["entry_id"] for e in self._pending_credits}
+        loaded = 0
+        for entry in entries:
+            if entry.get("entry_id") not in known:
+                self._pending_credits.append(entry)
+                loaded += 1
+        if loaded:
+            logger.warning(f"Loaded {loaded} undelivered wallet credits from previous run")
+        return loaded
