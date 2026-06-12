@@ -10,6 +10,8 @@ import random
 from datetime import datetime, timedelta
 from typing import Optional
 
+from .glicko import INITIAL_RATING
+
 # Base cosmetic avatar ids from the iOS CosmeticCatalog (8 free "Classic"
 # personas — always renderable on every client). Bots are assigned one
 # deterministically so a given persona always wears the same face.
@@ -150,7 +152,7 @@ class BotPersonaPool:
     def __init__(self, firestore_client=None):
         self._firestore = firestore_client
         self._in_use: set[str] = set()  # persona_ids currently assigned
-        # persona_id -> latest known rating (defaults to 1500 if no
+        # persona_id -> latest known rating (defaults to INITIAL_RATING if no
         # duel_ratings doc exists). Seeded in ensure_personas_exist and
         # invalidated on release_persona so the next assignment refreshes.
         self._rating_cache: dict[str, float] = {}
@@ -207,13 +209,13 @@ class BotPersonaPool:
             return
         for pid, rating_doc in results.items():
             if rating_doc:
-                self._rating_cache[pid] = rating_doc.get("rating", 1500)
+                self._rating_cache[pid] = rating_doc.get("rating", INITIAL_RATING)
             else:
-                self._rating_cache[pid] = 1500
+                self._rating_cache[pid] = INITIAL_RATING
         self._stale_ratings.clear()
         print(f"[BOT_PERSONAS] Rating cache warmed ({len(self._rating_cache)} entries)")
 
-    async def get_available_persona(self, target_rating: float = 1500) -> Optional[dict]:
+    async def get_available_persona(self, target_rating: float = INITIAL_RATING) -> Optional[dict]:
         """
         Get an available bot persona, preferring ones with similar rating.
 
@@ -231,7 +233,7 @@ class BotPersonaPool:
                 fresh = await self._firestore.get_duel_ratings(stale_ids)
                 for pid, doc in fresh.items():
                     if doc:
-                        self._rating_cache[pid] = doc.get("rating", 1500)
+                        self._rating_cache[pid] = doc.get("rating", INITIAL_RATING)
                 self._stale_ratings.clear()
             except Exception as e:
                 print(f"[BOT_PERSONAS] Stale-rating refresh failed: {e}", flush=True)
@@ -241,7 +243,7 @@ class BotPersonaPool:
             persona_id = generate_persona_id(persona["username"])
             if persona_id in self._in_use:
                 continue
-            rating = self._rating_cache.get(persona_id, 1500)
+            rating = self._rating_cache.get(persona_id, INITIAL_RATING)
             available.append({
                 "persona_id": persona_id,
                 "username": persona["username"],

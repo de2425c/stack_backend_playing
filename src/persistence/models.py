@@ -251,7 +251,7 @@ class DuelRecord:
 class DuelRating:
     """Glicko rating for duel mode."""
     user_id: str
-    rating: float = 1500.0       # Glicko rating
+    rating: float = 1000.0       # Glicko rating (keep in sync with server.glicko.INITIAL_RATING)
     rd: float = 350.0            # Rating deviation (uncertainty)
     wins: int = 0
     losses: int = 0

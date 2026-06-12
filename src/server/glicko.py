@@ -5,7 +5,7 @@ Implements the Glicko-1 rating system for calculating player ratings
 based on match outcomes. Similar to chess.com's rating system.
 
 Constants:
-- Initial rating: 1500
+- Initial rating: 1000
 - Initial RD: 350 (high uncertainty for new players)
 - Min RD: 50 (floor for active players - ratings become "sticky")
 - RD increases by 10 per 30 days of inactivity
@@ -17,7 +17,7 @@ from typing import Optional
 
 # Glicko constants
 Q = math.log(10) / 400  # ≈ 0.00575646
-INITIAL_RATING = 1500.0
+INITIAL_RATING = 1000.0
 INITIAL_RD = 350.0
 MIN_RD = 50.0
 MAX_RD = 350.0  # Cap RD at initial value

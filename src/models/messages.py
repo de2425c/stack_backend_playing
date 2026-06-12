@@ -477,7 +477,7 @@ class DuelMatchedMessage(BaseModel):
         description="Opponent's user id (persona id for bots). Lets the client target the opponent for a rematch challenge.",
     )
     is_bot: bool = Field(..., description="True if opponent is a bot fill-in")
-    opponent_rating: int = Field(default=1500, description="Opponent's Glicko rating")
+    opponent_rating: int = Field(default=1000, description="Opponent's Glicko rating")
     opponent_wins: int = Field(default=0, description="Opponent's total duel wins")
     opponent_losses: int = Field(default=0, description="Opponent's total duel losses")
 
