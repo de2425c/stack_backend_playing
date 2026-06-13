@@ -467,6 +467,46 @@ class FirestoreClient:
             existing.update(partial_data)
             self._in_memory["bot_sessions"][client_session_id] = existing
 
+    async def increment_user_cash_stats(
+        self, user_id: str, hands: int, profit_cents: int
+    ) -> None:
+        """Atomically bump a user's lifetime cash-game totals.
+
+        Backs the Ranks-tab cash leaderboards (hands played / chips won). The
+        boards used to client-aggregate the most recent ``bot_sessions``, which
+        undercounts anyone whose history falls outside the rolling scan window.
+        This server-owned, per-user counter is true-lifetime, cheap to query
+        (ordered + limited), and not client-writable, so it can't be gamed.
+
+        Call once per completed CASH session (duels are excluded by the caller).
+        ``set(merge=True)`` creates the doc on the first session and increments
+        thereafter.
+        """
+        if not user_id or hands <= 0:
+            return
+        if self._db:
+            from google.cloud import firestore as gc_firestore
+
+            def _do_increment():
+                self._db.collection("user_cash_stats").document(user_id).set(
+                    {
+                        "user_id": user_id,
+                        "cash_hands_played": gc_firestore.Increment(hands),
+                        "cash_profit_cents": gc_firestore.Increment(profit_cents),
+                        "updated_at": gc_firestore.SERVER_TIMESTAMP,
+                    },
+                    merge=True,
+                )
+
+            await asyncio.to_thread(_do_increment)
+        else:
+            doc = self._in_memory.setdefault("user_cash_stats", {}).setdefault(
+                user_id,
+                {"user_id": user_id, "cash_hands_played": 0, "cash_profit_cents": 0},
+            )
+            doc["cash_hands_played"] += hands
+            doc["cash_profit_cents"] += profit_cents
+
     async def get_session(self, session_id: str) -> Optional[dict]:
         """
         Retrieve session by ID.

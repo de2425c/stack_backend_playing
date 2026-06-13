@@ -104,6 +104,25 @@ async def process_session(
         print(f"[PROCESSOR] No hands to analyze")
         return None
 
+    # Maintain the lifetime per-user cash leaderboard counter. Done here (not in
+    # iOS) so it's server-authoritative and can't be inflated by a client, and
+    # before the expensive analysis below so a later analysis failure can't skip
+    # it. Duels live in `duels` with their own prize math, so they're excluded
+    # to match the cash boards. Best-effort: never let a stats write fail the run.
+    if firestore and not session.stake_id.startswith("duel"):
+        try:
+            await firestore.increment_user_cash_stats(
+                session.user_id,
+                hands=session.hands_played,
+                profit_cents=session.profit_cents,
+            )
+            print(
+                f"[PROCESSOR] Cash stats +{session.hands_played} hands / "
+                f"{session.profit_cents} cents for {session.user_id[:20]}..."
+            )
+        except Exception as e:
+            print(f"[PROCESSOR] Error incrementing user_cash_stats: {e!r}")
+
     # Step 1: Fetch hand data
     hands = []
     if firestore:
