@@ -36,6 +36,7 @@ def backfill(dry_run: bool = False):
     print("Scanning bot_sessions...")
     hands_by_user: dict[str, int] = {}
     profit_by_user: dict[str, int] = {}
+    last_session_by_user: dict[str, object] = {}
     scanned = 0
     skipped_duel = 0
 
@@ -56,6 +57,16 @@ def backfill(dry_run: bool = False):
         profit_by_user[user_id] = profit_by_user.get(user_id, 0) + int(
             data.get("profit_cents") or 0
         )
+        # Track each user's most recent session end so updated_at reflects real
+        # last-played time. The leaderboard's "active in the last 2 weeks" filter
+        # reads this — stamping SERVER_TIMESTAMP would falsely mark every user
+        # active at backfill time. (Going forward the per-session increment uses
+        # SERVER_TIMESTAMP, which is correct: a session just happened = now.)
+        end_time = data.get("end_time")
+        if end_time is not None:
+            prev = last_session_by_user.get(user_id)
+            if prev is None or end_time > prev:
+                last_session_by_user[user_id] = end_time
 
     # Drop users with zero hands — nothing to rank.
     users = [u for u, h in hands_by_user.items() if h > 0]
@@ -78,13 +89,16 @@ def backfill(dry_run: bool = False):
     batch_count = 0
     for user_id in users:
         ref = db.collection("user_cash_stats").document(user_id)
+        # Fall back to server time only if no session had a parseable end_time
+        # (rare); a missing updated_at would otherwise read as "never active".
+        last_played = last_session_by_user.get(user_id, firestore.SERVER_TIMESTAMP)
         batch.set(
             ref,
             {
                 "user_id": user_id,
                 "cash_hands_played": hands_by_user[user_id],
                 "cash_profit_cents": profit_by_user[user_id],
-                "updated_at": firestore.SERVER_TIMESTAMP,
+                "updated_at": last_played,
             },
             merge=True,
         )
