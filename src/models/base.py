@@ -307,6 +307,12 @@ class HandEndedEvent(BaseModel):
     hand_id: str = Field(..., description="Hand that ended")
     winners: list[PotWinner] = Field(..., description="List of pot winners")
     showdown_hands: Optional[list[ShowdownHand]] = Field(None, description="Hole cards for all players at showdown")
+    rabbit_runout: Optional[list[Card]] = Field(
+        None,
+        description="Rabbit hunt: community cards that would have completed the board had the hand "
+        "run out. Only populated when a Pro player's fold ends the hand pre-river. Pro-gated at the "
+        "source so non-Pro wires never receive it.",
+    )
 
 
 class SeatUpdateEvent(BaseModel):

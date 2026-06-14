@@ -335,6 +335,114 @@ class TestStackCorrectness:
                 assert seat.bet.amount == 0, f"Seat {seat.seat_index} bet should be 0"
 
 
+class TestRabbitHunt:
+    """The rabbit-hunt runout: cards that would have completed the board after
+    a Pro player's fold, peeked from the undealt deck.
+
+    Correctness is pinned by replaying the SAME seed to showdown: the runout
+    must equal the would-have-been board exactly, with no reliance on the
+    internal burn-card index math being remembered correctly.
+    """
+
+    def _fresh(self, config, pro_seats=(0, 1)):
+        e = PokerTableEngine("tbl_rabbit", config)
+        e.seat_player(0, make_player("A"), Chips(amount=20000))
+        e.seat_player(1, make_player("B"), Chips(amount=20000))
+        for s in pro_seats:
+            e.set_seat_pro(s, True)
+        return e
+
+    def _board_len(self, engine) -> int:
+        return len(engine._adapter.get_board_cards())
+
+    def _play_to_showdown_board(self, config, seed):
+        """Reference: same seed, both players check/call to showdown. Returns the
+        full 5-card board as (rank, suit) tuples."""
+        random.seed(seed)
+        e = self._fresh(config)
+        e.start_hand()
+        for _ in range(40):
+            actor = e.get_actor_seat()
+            if actor is None:
+                break
+            allowed = e.get_allowed_actions(actor)
+            if allowed.can_check:
+                ev = e.apply_action(actor, ClientAction.CHECK, None)
+            elif allowed.can_call:
+                ev = e.apply_action(actor, ClientAction.CALL, None)
+            else:
+                break
+            if any(x.event_type == "hand_ended" for x in ev):
+                break
+        return [(c.rank, c.suit) for c in e._get_board_cards_as_model()]
+
+    def _fold_at_board_len(self, config, seed, target_len, pro_seats=(0, 1)):
+        """Same seed: check/call to advance streets until the board reaches
+        target_len, then fold. Postflop a player can't fold for free, so when at
+        the target street the actor bets and the opponent folds (betting doesn't
+        deal cards, so the would-have-been runout is unchanged). Returns the
+        HandEndedEvent."""
+        random.seed(seed)
+        e = self._fresh(config, pro_seats=pro_seats)
+        e.start_hand()
+        for _ in range(40):
+            actor = e.get_actor_seat()
+            if actor is None:
+                break
+            allowed = e.get_allowed_actions(actor)
+            at_target = self._board_len(e) >= target_len
+            if at_target and allowed.can_fold:
+                ev = e.apply_action(actor, ClientAction.FOLD, None)
+                ended = [x for x in ev if x.event_type == "hand_ended"]
+                assert ended, "Fold should have ended the hand"
+                return ended[0]
+            if at_target and allowed.can_raise:
+                # No bet to face yet — make one so the opponent can fold.
+                act = ClientAction.BET if allowed.call_amount.amount == 0 else ClientAction.RAISE_TO
+                e.apply_action(actor, act, Chips(amount=allowed.min_raise.amount))
+            elif allowed.can_check:
+                e.apply_action(actor, ClientAction.CHECK, None)
+            elif allowed.can_call:
+                e.apply_action(actor, ClientAction.CALL, None)
+            else:
+                break
+        raise AssertionError(f"never reached board_len {target_len}")
+
+    def test_preflop_fold_reveals_full_runout(self, config):
+        full = self._play_to_showdown_board(config, 123)
+        ended = self._fold_at_board_len(config, 123, target_len=0)
+        assert ended.rabbit_runout is not None
+        got = [(c.rank, c.suit) for c in ended.rabbit_runout]
+        assert got == full, "Preflop fold should reveal the full flop+turn+river"
+        assert len(got) == 5
+
+    def test_flop_fold_reveals_turn_and_river(self, config):
+        full = self._play_to_showdown_board(config, 7)
+        ended = self._fold_at_board_len(config, 7, target_len=3)
+        assert ended.rabbit_runout is not None
+        got = [(c.rank, c.suit) for c in ended.rabbit_runout]
+        assert got == full[3:5], "Flop fold should reveal turn + river"
+        assert len(got) == 2
+
+    def test_turn_fold_reveals_river(self, config):
+        full = self._play_to_showdown_board(config, 99)
+        ended = self._fold_at_board_len(config, 99, target_len=4)
+        assert ended.rabbit_runout is not None
+        got = [(c.rank, c.suit) for c in ended.rabbit_runout]
+        assert got == full[4:5], "Turn fold should reveal the river only"
+        assert len(got) == 1
+
+    def test_non_pro_fold_gets_no_runout(self, config):
+        """No Pro seat folded → no runout reaches the wire."""
+        ended = self._fold_at_board_len(config, 123, target_len=0, pro_seats=())
+        assert ended.rabbit_runout is None
+
+    def test_river_fold_has_no_runout(self, config):
+        """Folding once the river is already out leaves nothing to run out."""
+        ended = self._fold_at_board_len(config, 123, target_len=5)
+        assert ended.rabbit_runout is None
+
+
 class TestFoldOutPayout:
     """Test that fold-out hands award pots correctly."""
 

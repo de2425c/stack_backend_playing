@@ -75,10 +75,18 @@ class TableRunner:
     def has_user(self, user_id: str) -> bool:
         return user_id in self._user_seats
 
-    def set_blitz_mode(self, enabled: bool, human_seat: Optional[int] = None) -> None:
-        """Enable or disable blitz mode for this table."""
+    def set_blitz_mode(
+        self, enabled: bool, human_seat: Optional[int] = None, human_is_pro: bool = False
+    ) -> None:
+        """Enable or disable blitz mode for this table.
+
+        ``human_is_pro`` marks the human seat as Pro so the engine attaches the
+        rabbit-hunt runout to hand-ended events for that seat's folds.
+        """
         self._blitz_mode = enabled
         self._human_seat = human_seat
+        if human_seat is not None:
+            self._engine.set_seat_pro(human_seat, human_is_pro)
 
     def set_duel_mode(self, enabled: bool) -> None:
         """Enable or disable duel mode for this table."""

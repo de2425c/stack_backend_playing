@@ -76,6 +76,9 @@ class PokerTableEngine:
         self._last_completed_hand_id: Optional[str] = None
         # Track players who folded during current hand (pk_idx)
         self._folded_players: set[int] = set()
+        # Seats whose occupant is a Pro subscriber — gates the rabbit-hunt
+        # runout so the would-have-been board never reaches a non-Pro wire.
+        self._pro_seats: set[int] = set()
 
     @property
     def table_id(self) -> str:
@@ -564,6 +567,11 @@ class PokerTableEngine:
         # Track this hand as last completed (for stale action detection)
         self._last_completed_hand_id = self._hand_id
 
+        # Compute the rabbit-hunt runout BEFORE clearing hand state — the
+        # undealt deck is still intact (blitz cancels the hand without dealing
+        # the remaining board). Pro-gated inside _compute_rabbit_runout.
+        rabbit_runout = self._compute_rabbit_runout()
+
         # Transition to between hands
         self._status = TableStatus.BETWEEN_HANDS
 
@@ -571,6 +579,7 @@ class PokerTableEngine:
             hand_id=self._hand_id,
             winners=winners,
             showdown_hands=None,
+            rabbit_runout=rabbit_runout,
         )]
 
     def is_action_stale(self, hand_id: str) -> bool:
@@ -658,10 +667,15 @@ class PokerTableEngine:
         if not is_showdown:
             showdown_hands = None
 
+        # Rabbit hunt: only when the hand ended by fold (no showdown) and the
+        # undealt board still exists. Pro-gated inside the helper.
+        rabbit_runout = None if is_showdown else self._compute_rabbit_runout()
+
         events.append(HandEndedEvent(
             hand_id=self._hand_id,
             winners=winners,
             showdown_hands=showdown_hands,
+            rabbit_runout=rabbit_runout,
         ))
 
         # Update player stacks
@@ -675,6 +689,57 @@ class PokerTableEngine:
         self._status = TableStatus.BETWEEN_HANDS
 
         return events
+
+    # -------------------------------------------------------------------------
+    # Rabbit hunt
+    # -------------------------------------------------------------------------
+
+    def set_seat_pro(self, seat: int, is_pro: bool) -> None:
+        """Mark/unmark a seat's occupant as Pro (enables the rabbit-hunt runout
+        for their folds). Called when a player joins / their Pro state is known."""
+        if is_pro:
+            self._pro_seats.add(seat)
+        else:
+            self._pro_seats.discard(seat)
+
+    def _folded_pro_seat_present(self) -> bool:
+        """True if any player who folded this hand sits in a Pro seat."""
+        for pk_idx in self._folded_players:
+            if pk_idx < len(self._active_seat_indices):
+                if self._active_seat_indices[pk_idx] in self._pro_seats:
+                    return True
+        return False
+
+    def _compute_rabbit_runout(self) -> Optional[list[Card]]:
+        """Community cards that would have completed the board had the hand run
+        out, peeked from the undealt deck.
+
+        Burn cards are real draws off the deck (CARD_BURNING automation), so for
+        Hold'em the remaining deque is laid out as
+        ``[burn, flop1, flop2, flop3, burn, turn, burn, river, ...]``. Verified
+        empirically against full deal-outs for preflop/flop/turn folds.
+
+        Pro-gated: returns None unless a Pro player folded this hand, so the
+        cards never reach a non-Pro client. Also None when nothing remains to
+        reveal (river fold / board already complete).
+        """
+        if not self._folded_pro_seat_present():
+            return None
+        state = self._adapter._state
+        if state is None:
+            return None
+        board_len = len(self._adapter.get_board_cards())
+        deck = list(state.deck_cards)
+        if board_len == 0:        # preflop fold → flop + turn + river
+            picks = deck[1:4] + deck[5:6] + deck[7:8]
+        elif board_len == 3:      # flop fold → turn + river
+            picks = deck[1:2] + deck[3:4]
+        elif board_len == 4:      # turn fold → river
+            picks = deck[1:2]
+        else:                     # river already out — nothing to run out
+            return None
+        runout = [Card(rank=str(c.rank), suit=str(c.suit)) for c in picks]
+        return runout or None
 
     # -------------------------------------------------------------------------
     # Snapshots

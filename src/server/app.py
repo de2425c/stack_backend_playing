@@ -83,6 +83,8 @@ class DuelMatch:
     player2_entry_fee_cents: Optional[int] = None
     player2_is_bot: bool = False
     player2_avatar: Optional[str] = None  # equipped cosmetic avatar id (or bot's assigned avatar)
+    player1_is_pro: bool = False  # gates rabbit-hunt runout for player1's folds
+    player2_is_pro: bool = False  # gates rabbit-hunt runout for player2's folds
     winner_id: Optional[str] = None
     # widen_level: 0 = strict (same fee only), 1 = any fee within stack_type
     widen_level: int = 0
@@ -1737,9 +1739,10 @@ async def _create_bot_table(
     # Set auto top-up preference on the player's seat and blitz mode on runner
     runner = manager._tables.get(table_id)
     if runner:
-        # Set blitz mode on the runner
-        runner.set_blitz_mode(blitz_mode, human_seat=seat)
-        print(f"[BOT_TABLE] Set blitz_mode={blitz_mode} for table {table_id}")
+        # Set blitz mode on the runner (and mark the human seat's Pro status
+        # so the rabbit-hunt runout is attached for Pro folds).
+        runner.set_blitz_mode(blitz_mode, human_seat=seat, human_is_pro=is_pro)
+        print(f"[BOT_TABLE] Set blitz_mode={blitz_mode} is_pro={is_pro} for table {table_id}")
 
         if seat < len(runner._engine._seats):
             seat_state = runner._engine._seats[seat]
@@ -1999,6 +2002,7 @@ async def _join_duel_queue(
     websocket: WebSocket,
     challenge_id: Optional[str] = None,
     avatar: Optional[str] = None,
+    is_pro: bool = False,
 ) -> Optional[dict]:
     """
     Handle JOIN_DUEL request.
@@ -2106,6 +2110,7 @@ async def _join_duel_queue(
         waiting_match.player2_entry_fee_cents = entry_fee_cents
         waiting_match.player2_is_bot = False
         waiting_match.player2_avatar = avatar
+        waiting_match.player2_is_pro = is_pro
         waiting_match.status = "in_progress"
 
         if waiting_match.player1_entry_fee_cents != entry_fee_cents:
@@ -2143,6 +2148,7 @@ async def _join_duel_queue(
         player1_display_name=display_name,
         player1_entry_fee_cents=entry_fee_cents,
         player1_avatar=avatar,
+        player1_is_pro=is_pro,
     )
 
     # Track user
@@ -2283,6 +2289,12 @@ async def _start_duel_match(match: DuelMatch, player2_websocket: WebSocket) -> N
         match.player2_id, stake_id, buy_in, player2, table_id=table_id
     )
     connections.join_table(match.player2_id, table_id)
+
+    # Mark each seat's Pro status so the rabbit-hunt runout is attached only for
+    # a Pro player's fold (and never reaches a non-Pro opponent's wire).
+    if runner:
+        runner._engine.set_seat_pro(seat1, match.player1_is_pro)
+        runner._engine.set_seat_pro(seat2, match.player2_is_pro)
 
     # Fetch ratings for both players
     p1_rating, p1_wins, p1_losses = INITIAL_RATING, 0, 0
@@ -3261,6 +3273,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     websocket=websocket,
                     challenge_id=data.get("challenge_id"),
                     avatar=data.get("avatar"),
+                    is_pro=bool(data.get("is_pro", False)),
                 )
                 if error:
                     await connections.send_to_user(user_id, error)
