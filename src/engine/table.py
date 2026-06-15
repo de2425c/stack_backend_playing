@@ -696,34 +696,35 @@ class PokerTableEngine:
 
     def set_seat_pro(self, seat: int, is_pro: bool) -> None:
         """Mark/unmark a seat's occupant as Pro (enables the rabbit-hunt runout
-        for their folds). Called when a player joins / their Pro state is known."""
+        for that seat). Called when a player joins / their Pro state is known."""
         if is_pro:
             self._pro_seats.add(seat)
         else:
             self._pro_seats.discard(seat)
 
-    def _folded_pro_seat_present(self) -> bool:
-        """True if any player who folded this hand sits in a Pro seat."""
-        for pk_idx in self._folded_players:
-            if pk_idx < len(self._active_seat_indices):
-                if self._active_seat_indices[pk_idx] in self._pro_seats:
-                    return True
-        return False
+    def _pro_seat_in_hand(self) -> bool:
+        """True if any Pro seat is in the current hand — the player who'd see
+        the rabbit, whether they folded or won the pot uncontested."""
+        return any(seat in self._pro_seats for seat in self._active_seat_indices)
 
     def _compute_rabbit_runout(self) -> Optional[list[Card]]:
         """Community cards that would have completed the board had the hand run
         out, peeked from the undealt deck.
 
+        Offered whenever the hand ends with cards still to come (board < 5) — a
+        fold, OR everyone folding to a bet (uncontested win) — not just when the
+        Pro player folded.
+
         Burn cards are real draws off the deck (CARD_BURNING automation), so for
         Hold'em the remaining deque is laid out as
         ``[burn, flop1, flop2, flop3, burn, turn, burn, river, ...]``. Verified
-        empirically against full deal-outs for preflop/flop/turn folds.
+        empirically against full deal-outs for preflop/flop/turn endings.
 
-        Pro-gated: returns None unless a Pro player folded this hand, so the
-        cards never reach a non-Pro client. Also None when nothing remains to
-        reveal (river fold / board already complete).
+        Pro-gated: returns None unless a Pro player is in the hand, so the cards
+        never reach a non-Pro client. Also None when nothing remains to reveal
+        (river / board already complete).
         """
-        if not self._folded_pro_seat_present():
+        if not self._pro_seat_in_hand():
             return None
         state = self._adapter._state
         if state is None:

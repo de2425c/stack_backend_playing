@@ -433,9 +433,20 @@ class TestRabbitHunt:
         assert len(got) == 1
 
     def test_non_pro_fold_gets_no_runout(self, config):
-        """No Pro seat folded → no runout reaches the wire."""
+        """No Pro seat in the hand → no runout reaches the wire."""
         ended = self._fold_at_board_len(config, 123, target_len=0, pro_seats=())
         assert ended.rabbit_runout is None
+
+    def test_runout_offered_whenever_pro_in_hand(self, config):
+        """Broadened rule: the runout is offered whenever the hand ends pre-river
+        and a Pro seat is in the hand — regardless of whether that seat folded or
+        won the pot uncontested. With only seat 0 Pro, the runout is present even
+        though either seat may be the one that folded."""
+        full = self._play_to_showdown_board(config, 123)
+        ended = self._fold_at_board_len(config, 123, target_len=0, pro_seats=(0,))
+        assert ended.rabbit_runout is not None
+        got = [(c.rank, c.suit) for c in ended.rabbit_runout]
+        assert got == full
 
     def test_river_fold_has_no_runout(self, config):
         """Folding once the river is already out leaves nothing to run out."""
