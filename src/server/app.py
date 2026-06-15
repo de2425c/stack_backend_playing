@@ -3323,6 +3323,12 @@ async def websocket_endpoint(websocket: WebSocket):
             elif msg_type == "ANIMATION_COMPLETE":
                 await handler.handle_animation_complete(user_id)
 
+            elif msg_type == "SET_PRO":
+                # Client's Pro status changed mid-session (purchase, restore, or
+                # a debug toggle). Update the seat so rabbit-hunt runouts reflect
+                # it without a rejoin.
+                await handler.handle_set_pro(user_id, bool(data.get("is_pro", False)))
+
             elif msg_type == "PING":
                 response = await handler.handle_ping(
                     user_id, data.get("client_ts", 0)

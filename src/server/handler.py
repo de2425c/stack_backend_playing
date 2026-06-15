@@ -419,6 +419,21 @@ class MessageHandler:
                 message=str(e),
             ).model_dump(mode="json")
 
+    async def handle_set_pro(self, user_id: str, is_pro: bool) -> None:
+        """Update the user's seat Pro flag mid-session (purchase / restore /
+        debug toggle) so rabbit-hunt runouts reflect it without a rejoin."""
+        table_id = self._manager.get_table_for_user(user_id)
+        if not table_id:
+            return
+        runner = self._manager._tables.get(table_id)
+        if runner is None:
+            return
+        seat = runner._user_seats.get(user_id)
+        if seat is None:
+            return
+        runner._engine.set_seat_pro(seat, is_pro)
+        print(f"[SET_PRO] user={user_id} seat={seat} is_pro={is_pro} table={table_id}")
+
     async def handle_animation_complete(self, user_id: str) -> Optional[dict]:
         """Handle ANIMATION_COMPLETE message from client. Signals animations are done."""
         table_id = self._manager.get_table_for_user(user_id)
