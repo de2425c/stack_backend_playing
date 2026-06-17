@@ -798,7 +798,13 @@ class PokerTableEngine:
                     pk_idx = self._active_seat_indices.index(i)
                     # Use PokerKit's stack during a hand (reflects blinds/bets)
                     current_stack = self._adapter.get_stacks()[pk_idx]
-                    if current_stack == 0:
+                    # Fold state is tracked separately from PokerKit status, so a
+                    # snapshot must consult _folded_players explicitly — otherwise a
+                    # client that reconnects mid-hand resyncs folded players back to
+                    # ACTIVE and the hand looks like nobody folded.
+                    if pk_idx in self._folded_players:
+                        status = SeatStatus.FOLDED
+                    elif current_stack == 0:
                         status = SeatStatus.ALL_IN
                     else:
                         status = SeatStatus.ACTIVE
