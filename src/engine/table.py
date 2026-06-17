@@ -304,6 +304,27 @@ class PokerTableEngine:
                 pot=Chips(amount=self._adapter.get_pot_amount()),
             ))
 
+        # Degenerate all-in-on-blind runout. When a player posts a partial blind
+        # and is now all-in, the other player can be left as the lone actor with
+        # nothing to decide — only a check, since the opponent is already all-in
+        # for less. PokerKit pauses on that actor, so we'd emit an ACTION_REQUEST
+        # that never resolves (no real decision to make) and the table freezes
+        # between hands. Auto-check the runout so the hand plays to a result and
+        # the short stack eventually busts to 0 chips (where _check_duel_bust ends
+        # the match). Only fires when <2 players have chips behind AND the actor
+        # faces no bet — a genuine call/fold-an-all-in decision (call_amount > 0)
+        # is left untouched so a real ACTION_REQUEST is still sent.
+        if not self._adapter.is_complete and self._adapter.actor_index is not None:
+            behind_count = sum(1 for s in self._adapter.get_stacks() if s > 0)
+            guard = 0
+            while (not self._adapter.is_complete
+                   and self._adapter.actor_index is not None
+                   and (self._adapter.call_amount or 0) == 0
+                   and behind_count < 2
+                   and guard < 12):
+                self._adapter.apply_action(ClientAction.CHECK)
+                guard += 1
+
         # Check if hand is already complete (e.g., both players all-in from blinds)
         # This can happen when BB can't afford the full blind and SB can't cover either
         if self._adapter.is_complete:
