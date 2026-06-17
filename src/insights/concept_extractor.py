@@ -55,7 +55,7 @@ def extract_concepts_from_text(
     text: str,
     chapter_name: str,
     api_key: str | None = None,
-    model: str = "claude-sonnet-4-20250514"
+    model: str = "claude-sonnet-4-6"
 ) -> list[PokerConcept]:
     """Use Claude to extract structured concepts from chapter text."""
     from anthropic import Anthropic

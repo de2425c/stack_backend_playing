@@ -169,7 +169,7 @@ def chunk_section_simple(section: dict, max_chars: int = 6000, overlap: int = 20
 def chunk_section_llm(
     section: dict,
     client: Anthropic,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = "claude-sonnet-4-6",
     max_retries: int = 3
 ) -> list[dict]:
     """
@@ -306,7 +306,7 @@ def chunk_all_sections(
     sections: list[dict],
     use_llm: bool = True,
     api_key: str | None = None,
-    model: str = "claude-sonnet-4-20250514"
+    model: str = "claude-sonnet-4-6"
 ) -> list[dict]:
     """
     Chunk all sections into concept units.

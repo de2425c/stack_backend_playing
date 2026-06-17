@@ -924,7 +924,7 @@ class InsightGenerator:
     def __init__(
         self,
         api_key: str | None = None,
-        model: str = "claude-sonnet-4-20250514",
+        model: str = "claude-sonnet-4-6",
         concepts_path: str | None = None,
         use_vector_search: bool = False,
         pinecone_index: str = "poker-rag"

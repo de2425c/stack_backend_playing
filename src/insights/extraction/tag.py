@@ -40,7 +40,7 @@ Return ONLY valid JSON, no other text."""
 def tag_chunk(
     chunk: dict,
     client: Anthropic,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = "claude-sonnet-4-6",
     max_retries: int = 3
 ) -> dict:
     """
@@ -142,7 +142,7 @@ def tag_chunk(
 def tag_all_chunks(
     chunks: list[dict],
     api_key: str | None = None,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = "claude-sonnet-4-6",
     batch_size: int = 10,
     checkpoint_path: str | None = None
 ) -> list[dict]:

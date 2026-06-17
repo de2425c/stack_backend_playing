@@ -112,7 +112,7 @@ def extract_sections_from_chapter(pdf_path: str, start_page: int, end_page: int)
 class StreamingConceptExtractor:
     """Extract concepts with carried state across sections."""
 
-    def __init__(self, api_key: str | None = None, model: str = "claude-sonnet-4-20250514"):
+    def __init__(self, api_key: str | None = None, model: str = "claude-sonnet-4-6"):
         from anthropic import Anthropic
 
         self.client = Anthropic(api_key=api_key or os.environ.get("ANTHROPIC_API_KEY"))
