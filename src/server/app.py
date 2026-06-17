@@ -116,8 +116,8 @@ _pending_duel_results: dict[str, tuple[float, dict]] = {}
 PENDING_DUEL_RESULT_TTL_SECONDS = 600.0
 
 
-# Valid duel entry fees in cents ($100, $250, $500, $1000, $5000)
-VALID_DUEL_ENTRY_FEES = {10000, 25000, 50000, 100000, 500000}
+# Valid duel entry fees in cents ($100, $500, $1k, $5k, $10k, $25k)
+VALID_DUEL_ENTRY_FEES = {10000, 50000, 100000, 500000, 1000000, 2500000}
 # Stack types: 50bb (500 chips) or 15bb (150 chips) - always at 5¢/10¢
 VALID_DUEL_STACK_TYPES = {"50bb", "15bb"}
 # Strict-tier wait before widening to any tier (seconds)

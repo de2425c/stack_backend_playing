@@ -58,6 +58,8 @@ class TableManager:
             ("5_10", 500, 1000),
             ("10_25", 1000, 2500),
             ("25_50", 2500, 5000),
+            ("50_100", 5000, 10000),
+            ("100_250", 10000, 25000),
         ]
         configs: dict[str, TableConfig] = {}
         for suffix, sb, bb in cash_tiers:
