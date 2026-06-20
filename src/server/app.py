@@ -2423,6 +2423,14 @@ async def _start_duel_match_with_bot(match: DuelMatch) -> None:
     )
     connections.join_table(match.player1_id, table_id)
 
+    # Mark the human seat Pro so the rabbit-hunt runout is computed for their
+    # folds (and uncontested wins). The bot opponent is never Pro. Without this
+    # the human-vs-bot duel never attaches rabbit_runout, so a Pro player's
+    # client hides the rabbit entirely — unlike _start_duel_match (human-vs-
+    # human) and the cash bot table, which both mark the seat Pro.
+    if runner:
+        runner._engine.set_seat_pro(seat1, match.player1_is_pro)
+
     # Fetch bot's rating
     bot_rating, bot_wins, bot_losses = INITIAL_RATING, 0, 0
     if firestore:
